@@ -178,7 +178,6 @@ export class FirestoreService {
                 DB_STRUCTURE.CLIENT_COLLECTION, 
                 DB_STRUCTURE.SUBCOLLECTIONS.DIPENDENTI, 
                 employeeName, 
-                DB_STRUCTURE.EMPLOYEE_SUBCOLLECTIONS.ORE, 
                 date
             );
             
@@ -226,7 +225,6 @@ export class FirestoreService {
                 DB_STRUCTURE.CLIENT_COLLECTION, 
                 DB_STRUCTURE.SUBCOLLECTIONS.DIPENDENTI, 
                 employeeName, 
-                DB_STRUCTURE.EMPLOYEE_SUBCOLLECTIONS.ORE, 
                 date
             );
             
@@ -261,8 +259,7 @@ export class FirestoreService {
             const collRef = collection(db, 
                 DB_STRUCTURE.CLIENT_COLLECTION, 
                 DB_STRUCTURE.SUBCOLLECTIONS.DIPENDENTI, 
-                employeeName, 
-                DB_STRUCTURE.EMPLOYEE_SUBCOLLECTIONS.ORE
+                employeeName
             );
             
             const q = query(
@@ -348,13 +345,11 @@ export class FirestoreService {
             
             const employeeName = employee.name ? employee.name.replace(/[^a-zA-Z0-9_]/g, '_') : employeeId;
             
-            // Costruisci il path corretto per il documento (deve avere numero pari di segmenti)
+            // Costruisci il path corretto per il documento badge (deve avere numero pari di segmenti)
             const docRef = doc(db, 
                 DB_STRUCTURE.CLIENT_COLLECTION, 
                 DB_STRUCTURE.SUBCOLLECTIONS.DIPENDENTI, 
-                employeeName, 
-                DB_STRUCTURE.EMPLOYEE_SUBCOLLECTIONS.BADGE, 
-                date
+                employeeName + '_badge_' + date
             );
             
             const docSnap = await getDoc(docRef);
@@ -382,13 +377,11 @@ export class FirestoreService {
             
             const employeeName = employee.name ? employee.name.replace(/[^a-zA-Z0-9_]/g, '_') : employeeId;
             
-            // Costruisci il path corretto per il documento (deve avere numero pari di segmenti)
+            // Costruisci il path corretto per il documento badge (deve avere numero pari di segmenti)
             const docRef = doc(db, 
                 DB_STRUCTURE.CLIENT_COLLECTION, 
                 DB_STRUCTURE.SUBCOLLECTIONS.DIPENDENTI, 
-                employeeName, 
-                DB_STRUCTURE.EMPLOYEE_SUBCOLLECTIONS.BADGE, 
-                date
+                employeeName + '_badge_' + date
             );
             
             await setDoc(docRef, {
