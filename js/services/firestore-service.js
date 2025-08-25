@@ -130,26 +130,13 @@ export class FirestoreService {
             if (docSnap.exists()) {
                 return docSnap.data().list || [];
             } else {
-                // Crea categorie di default
-                const defaultCategorie = [
-                    { id: 'generale', name: 'Generale', color: '#6c757d', icon: 'bi-building' },
-                    { id: 'edilizia', name: 'Edilizia', color: '#fd7e14', icon: 'bi-hammer' },
-                    { id: 'impianti', name: 'Impianti', color: '#20c997', icon: 'bi-lightning' },
-                    { id: 'manutenzione', name: 'Manutenzione', color: '#6f42c1', icon: 'bi-tools' }
-                ];
-                try {
-                    await this.saveCategorieCantieri(defaultCategorie);
-                } catch (saveError) {
-                    console.error('Errore salvataggio categorie di default:', saveError);
-                }
-                return defaultCategorie;
+                // Ritorna array vuoto se non ci sono categorie
+                return [];
             }
         } catch (error) {
             console.error('Errore caricamento categorie cantieri:', error);
-            // Ritorna categorie di default invece di lanciare errore
-            return [
-                { id: 'generale', name: 'Generale', color: '#6c757d', icon: 'bi-building' }
-            ];
+            // Ritorna array vuoto invece di categorie di default
+            return [];
         }
     }
     

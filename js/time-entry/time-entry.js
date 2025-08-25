@@ -206,7 +206,6 @@ class TimeEntryService {
         const today = getTodayString();
         document.getElementById('workDate').value = today;
         this.changeDate(today);
-    }
                 cognome: this.currentUser.name ? this.currentUser.name.split(' ').slice(1).join(' ') || '' : '',
     async changeDate(newDate) {
         if (!newDate) return;
@@ -427,8 +426,15 @@ class TimeEntryService {
     // === GESTIONE CANTIERI ===
     async loadCantieriSelect() {
         // Carica cantieri e categorie
-        await this.cantiereService.loadCantieri();
-        await this.cantiereService.loadCategorie();
+        try {
+            await this.cantiereService.loadCantieri();
+            await this.cantiereService.loadCategorie();
+        } catch (error) {
+            console.error('Errore caricamento cantieri:', error);
+            showToast('Errore caricamento cantieri', 'error');
+            return;
+        }
+        
         const cantieriByCategoria = this.cantiereService.getCantieriByCategoria();
         
         // Popola il modal con cantieri per categoria
@@ -442,7 +448,7 @@ class TimeEntryService {
         container.innerHTML = '';
         
         Object.values(cantieriByCategoria).forEach(group => {
-            if (group.cantieri.length === 0) return;
+            if (!group || !group.cantieri || group.cantieri.length === 0) return;
             
             const categorySection = document.createElement('div');
             categorySection.className = 'mb-4';
@@ -463,6 +469,7 @@ class TimeEntryService {
             container.appendChild(categorySection);
             
             const cantieriRow = document.getElementById(`cantieri-${group.categoria.id}`);
+            if (!cantieriRow) return;
             
             group.cantieri.forEach(cantiere => {
                 const cantiereCard = document.createElement('div');
@@ -493,6 +500,17 @@ class TimeEntryService {
                 cantieriRow.appendChild(cantiereCard);
             });
         });
+        
+        // Se non ci sono cantieri, mostra messaggio
+        if (container.children.length === 0) {
+            container.innerHTML = `
+                <div class="text-center py-4">
+                    <i class="bi bi-building display-1 text-muted mb-3"></i>
+                    <h5 class="text-muted">Nessun cantiere disponibile</h5>
+                    <p class="text-muted">Contatta l'amministratore per configurare i cantieri</p>
+                </div>
+            `;
+        }
         
         // Aggiungi event listeners per le card
         container.querySelectorAll('.cantiere-card').forEach(card => {

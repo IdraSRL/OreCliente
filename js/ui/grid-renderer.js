@@ -108,7 +108,7 @@ export class GridRenderer {
         
         cantieri.forEach(cantiere => {
             const categoria = categorie.find(cat => cat.id === cantiere.categoria) || 
-                            { name: 'Generale', color: '#6c757d', icon: 'bi-building' };
+                            { name: 'Senza Categoria', color: '#6c757d', icon: 'bi-building' };
             
             const card = document.createElement('div');
             card.className = 'col-md-6 col-lg-4 mb-4';

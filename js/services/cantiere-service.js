@@ -75,11 +75,8 @@ export class CantiereService {
             const categoriaId = cantiere.categoria || 'generale';
             
             if (!grouped[categoriaId]) {
-                // Create default category if not found
-                grouped[categoriaId] = {
-                    categoria: { id: categoriaId, name: 'Generale', color: '#6c757d', icon: 'bi-building' },
-                    cantieri: []
-                };
+                // Skip cantieri without valid category
+                return;
             }
             
             grouped[categoriaId].cantieri.push(cantiere);
@@ -107,7 +104,8 @@ export class CantiereService {
             
             // Ensure categoria exists
             if (cantiereData.categoria && !this.getCategoriaById(cantiereData.categoria)) {
-                cantiereData.categoria = 'generale';
+                // Remove invalid categoria reference
+                delete cantiereData.categoria;
             }
             
             // Update or add cantiere
@@ -194,9 +192,7 @@ export class CantiereService {
     async deleteCategoria(categoriaId) {
         try {
             // Cannot delete 'generale' category
-            if (categoriaId === 'generale') {
-                throw new Error('Impossibile eliminare la categoria Generale');
-            }
+            // Allow deletion of any category
             
             const index = this.categorie.findIndex(c => c.id === categoriaId);
             
@@ -204,10 +200,10 @@ export class CantiereService {
                 throw new Error('Categoria non trovata');
             }
             
-            // Move cantieri from deleted category to 'generale'
+            // Remove categoria reference from cantieri
             this.cantieri.forEach(cantiere => {
                 if (cantiere.categoria === categoriaId) {
-                    cantiere.categoria = 'generale';
+                    delete cantiere.categoria;
                 }
             });
             
