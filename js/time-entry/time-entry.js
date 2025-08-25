@@ -1,5 +1,5 @@
 import { AuthService } from '../auth/auth.js';
-import { FirestoreService } from '../firestore/firestore-service.js';
+import { FirestoreService } from '../services/firestore-service.js';
 import { BadgeService } from '../services/badge-service.js';
 import { CantiereService } from '../services/cantiere-service.js';
 import { TableRenderer } from '../ui/table-renderer.js';

@@ -1,7 +1,7 @@
-import { FirestoreService } from '../firestore/firestore-service.js';
+import { FirestoreService } from '../services/firestore-service.js';
 import { showToast } from '../utils/ui-utils.js';
 import { saveToStorage, loadFromStorage, removeFromStorage } from '../utils/storage-utils.js';
-import { ERROR_MESSAGES } from '../config.js';
+import { ERROR_MESSAGES } from '../config/client-config.js';
 
 export class AuthService {
     static SESSION_KEY = 'userSession';
@@ -95,13 +95,13 @@ export class AuthService {
     // Logout
     static logout() {
         removeFromStorage(this.SESSION_KEY);
-        window.location.href = '../pages/login.html';
+        window.location.href = 'login.html';
     }
     
     // Middleware per proteggere le pagine
     static requireAuth(requiredType = null) {
         if (!this.isLoggedIn()) {
-            window.location.href = '../pages/login.html';
+            window.location.href = 'login.html';
             return false;
         }
         
@@ -109,7 +109,7 @@ export class AuthService {
             const user = this.getCurrentUser();
             if (user.type !== requiredType) {
                 showToast('Accesso non autorizzato', 'error');
-                window.location.href = '../pages/login.html';
+                window.location.href = 'login.html';
                 return false;
             }
         }

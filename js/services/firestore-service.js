@@ -1,4 +1,4 @@
-import { db } from '../firebase-config.js';
+import { db } from '../config/firebase-config.js';
 import { 
     doc, 
     getDoc, 
@@ -10,14 +10,14 @@ import {
     orderBy,
     limit
 } from 'https://www.gstatic.com/firebasejs/10.10.0/firebase-firestore.js';
-import { COLL } from '../config.js';
+import { DB_STRUCTURE } from '../config/client-config.js';
 
 export class FirestoreService {
     
     // Test connessione database
     static async testConnection() {
         try {
-            const testDoc = doc(db, COLL.MASTER_PASS, 'config');
+            const testDoc = doc(db, DB_STRUCTURE.CLIENT_COLLECTION, 'test');
             await getDoc(testDoc);
             return true;
         } catch (error) {
@@ -29,7 +29,7 @@ export class FirestoreService {
     // === GESTIONE MASTER PASSWORD ===
     static async getMasterPassword() {
         try {
-            const docRef = doc(db, COLL.MASTER_PASS, 'config');
+            const docRef = doc(db, DB_STRUCTURE.CLIENT_COLLECTION, DB_STRUCTURE.SUBCOLLECTIONS.MASTER_PASSWORD);
             const docSnap = await getDoc(docRef);
             
             if (docSnap.exists()) {
@@ -49,7 +49,7 @@ export class FirestoreService {
     
     static async updateMasterPassword(newPassword) {
         try {
-            const docRef = doc(db, COLL.MASTER_PASS, 'config');
+            const docRef = doc(db, DB_STRUCTURE.CLIENT_COLLECTION, DB_STRUCTURE.SUBCOLLECTIONS.MASTER_PASSWORD);
             await setDoc(docRef, { password: newPassword });
             return true;
         } catch (error) {
@@ -61,11 +61,11 @@ export class FirestoreService {
     // === GESTIONE DIPENDENTI ===
     static async getEmployees() {
         try {
-            const docRef = doc(db, COLL.EMPLOYEES, 'list');
+            const docRef = doc(db, DB_STRUCTURE.CLIENT_COLLECTION, DB_STRUCTURE.SUBCOLLECTIONS.EMPLOYEES);
             const docSnap = await getDoc(docRef);
             
             if (docSnap.exists()) {
-                const employees = docSnap.data().employees || [];
+                const employees = docSnap.data().list || [];
                 // Assicurati che ogni dipendente abbia una password
                 return employees.map(emp => ({
                     ...emp,
@@ -83,8 +83,8 @@ export class FirestoreService {
     
     static async saveEmployees(employees) {
         try {
-            const docRef = doc(db, COLL.EMPLOYEES, 'list');
-            await setDoc(docRef, { employees });
+            const docRef = doc(db, DB_STRUCTURE.CLIENT_COLLECTION, DB_STRUCTURE.SUBCOLLECTIONS.EMPLOYEES);
+            await setDoc(docRef, { list: employees });
             return true;
         } catch (error) {
             console.error('Errore salvataggio dipendenti:', error);
@@ -95,11 +95,11 @@ export class FirestoreService {
     // === GESTIONE CANTIERI ===
     static async getCantieri() {
         try {
-            const docRef = doc(db, COLL.CANTIERI, 'list');
+            const docRef = doc(db, DB_STRUCTURE.CLIENT_COLLECTION, DB_STRUCTURE.SUBCOLLECTIONS.CANTIERI);
             const docSnap = await getDoc(docRef);
             
             if (docSnap.exists()) {
-                return docSnap.data().cantieri || [];
+                return docSnap.data().list || [];
             } else {
                 return [];
             }
@@ -112,8 +112,8 @@ export class FirestoreService {
     
     static async saveCantieri(cantieri) {
         try {
-            const docRef = doc(db, COLL.CANTIERI, 'list');
-            await setDoc(docRef, { cantieri });
+            const docRef = doc(db, DB_STRUCTURE.CLIENT_COLLECTION, DB_STRUCTURE.SUBCOLLECTIONS.CANTIERI);
+            await setDoc(docRef, { list: cantieri });
             return true;
         } catch (error) {
             console.error('Errore salvataggio cantieri:', error);
@@ -124,11 +124,11 @@ export class FirestoreService {
     // === GESTIONE CATEGORIE CANTIERI ===
     static async getCategorieCantieri() {
         try {
-            const docRef = doc(db, COLL.CANTIERI, 'categorie');
-            const docSnap = await getDoc(docRef);
+            const categorieDocRef = doc(db, DB_STRUCTURE.CLIENT_COLLECTION, 'categorie');
+            const docSnap = await getDoc(categorieDocRef);
             
             if (docSnap.exists()) {
-                return docSnap.data().categorie || [];
+                return docSnap.data().list || [];
             } else {
                 // Crea categorie di default
                 const defaultCategorie = [
@@ -155,8 +155,8 @@ export class FirestoreService {
     
     static async saveCategorieCantieri(categorie) {
         try {
-            const docRef = doc(db, COLL.CANTIERI, 'categorie');
-            await setDoc(docRef, { categorie });
+            const categorieDocRef = doc(db, DB_STRUCTURE.CLIENT_COLLECTION, 'categorie');
+            await setDoc(categorieDocRef, { list: categorie });
             return true;
         } catch (error) {
             console.error('Errore salvataggio categorie cantieri:', error);
@@ -186,7 +186,7 @@ export class FirestoreService {
             
             const employeeName = employee.name ? employee.name.replace(/[^a-zA-Z0-9]/g, '_') : employeeId;
             
-            const docRef = doc(db, COLL.DIPENDENTI, employeeName, COLL.ORE_SUB, date);
+            const docRef = doc(db, DB_STRUCTURE.CLIENT_COLLECTION, DB_STRUCTURE.SUBCOLLECTIONS.DIPENDENTI, employeeName, DB_STRUCTURE.EMPLOYEE_SUBCOLLECTIONS.ORE, date);
             const docSnap = await getDoc(docRef);
             
             if (docSnap.exists()) {
@@ -226,7 +226,7 @@ export class FirestoreService {
             
             const employeeName = employee.name ? employee.name.replace(/[^a-zA-Z0-9]/g, '_') : employeeId;
             
-            const docRef = doc(db, COLL.DIPENDENTI, employeeName, COLL.ORE_SUB, date);
+            const docRef = doc(db, DB_STRUCTURE.CLIENT_COLLECTION, DB_STRUCTURE.SUBCOLLECTIONS.DIPENDENTI, employeeName, DB_STRUCTURE.EMPLOYEE_SUBCOLLECTIONS.ORE, date);
             await setDoc(docRef, {
                 data: date,
                 stato: data.stato || 'Normale',
@@ -248,7 +248,7 @@ export class FirestoreService {
             const employee = employees.find(emp => emp.id === employeeId);
             const employeeName = employee ? employee.name.replace(/[^a-zA-Z0-9]/g, '_') : employeeId;
             
-            const collRef = collection(db, COLL.DIPENDENTI, employeeName, COLL.ORE_SUB);
+            const collRef = collection(db, DB_STRUCTURE.CLIENT_COLLECTION, DB_STRUCTURE.SUBCOLLECTIONS.DIPENDENTI, employeeName, DB_STRUCTURE.EMPLOYEE_SUBCOLLECTIONS.ORE);
             const q = query(
                 collRef,
                 where('data', '>=', startDate),
@@ -307,8 +307,6 @@ export class FirestoreService {
         }
     }
     
-    // === UTILITY ===
-    
     // === GESTIONE BADGE STATE ===
     static async getBadgeState(employeeId, date) {
         try {
@@ -317,7 +315,7 @@ export class FirestoreService {
             const employee = employees.find(emp => emp.id === employeeId);
             const employeeName = employee ? employee.name.replace(/[^a-zA-Z0-9]/g, '_') : employeeId;
             
-            const docRef = doc(db, COLL.DIPENDENTI, employeeName, 'badge', date);
+            const docRef = doc(db, DB_STRUCTURE.CLIENT_COLLECTION, DB_STRUCTURE.SUBCOLLECTIONS.DIPENDENTI, employeeName, DB_STRUCTURE.EMPLOYEE_SUBCOLLECTIONS.BADGE, date);
             const docSnap = await getDoc(docRef);
             
             if (docSnap.exists()) {
@@ -338,7 +336,7 @@ export class FirestoreService {
             const employee = employees.find(emp => emp.id === employeeId);
             const employeeName = employee ? employee.name.replace(/[^a-zA-Z0-9]/g, '_') : employeeId;
             
-            const docRef = doc(db, COLL.DIPENDENTI, employeeName, 'badge', date);
+            const docRef = doc(db, DB_STRUCTURE.CLIENT_COLLECTION, DB_STRUCTURE.SUBCOLLECTIONS.DIPENDENTI, employeeName, DB_STRUCTURE.EMPLOYEE_SUBCOLLECTIONS.BADGE, date);
             await setDoc(docRef, {
                 ...badgeState,
                 ultimaModifica: new Date().toISOString()
@@ -363,7 +361,7 @@ export class FirestoreService {
             console.log(`Richiesta eliminazione dati per dipendente: ${employeeName} (ID: ${employeeId})`);
             
             // In un'implementazione completa, qui caricheremmo tutti i documenti
-            // della sub-collezione 'ore' e li elimineremmo uno per uno
+            // delle sub-collezioni e li elimineremmo uno per uno
             
             return true;
         } catch (error) {

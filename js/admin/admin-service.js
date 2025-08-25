@@ -1,5 +1,5 @@
 import { AuthService } from '../auth/auth.js';
-import { FirestoreService } from '../firestore/firestore-service.js';
+import { FirestoreService } from '../services/firestore-service.js';
 import { EmployeeService } from '../services/employee-service.js';
 import { CantiereService } from '../services/cantiere-service.js';
 import { PhotoService } from '../services/photo-service.js';
