@@ -1,0 +1,237 @@
+// Table rendering utilities for displaying data in tables
+
+import { minutesToHHMM, minutesToDecimal } from '../utils/time-utils.js';
+import { formatDate } from '../utils/date-utils.js';
+import { BADGE_COLORS } from '../config/constants.js';
+
+export class TableRenderer {
+    // Render activities table for time entry
+    static renderActivitiesTable(tbody, activities) {
+        if (!tbody) return;
+        
+        tbody.innerHTML = '';
+        
+        if (!activities || activities.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="text-center py-4">
+                        <i class="bi bi-calendar-plus me-2"></i>
+                        Nessuna attività inserita per questa giornata
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+        
+        activities.forEach(activity => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>
+                    <span class="badge bg-${this.getActivityBadgeColor(activity.tipo)}">${activity.tipo}</span>
+                </td>
+                <td>${activity.nome}</td>
+                <td>
+                    <input type="number" class="form-control form-control-sm" 
+                           value="${activity.minuti}" min="0" max="1440"
+                           onchange="timeEntryService.updateActivity('${activity.id}', 'minuti', this.value)">
+                </td>
+                <td>
+                    <input type="number" class="form-control form-control-sm" 
+                           value="${activity.persone}" min="1" max="50"
+                           onchange="timeEntryService.updateActivity('${activity.id}', 'persone', this.value)">
+                </td>
+                <td>
+                    <strong class="text-primary">${activity.minutiEffettivi || activity.minuti}</strong>
+                </td>
+                <td>
+                    <strong class="text-success">${minutesToHHMM(activity.minutiEffettivi || activity.minuti)}</strong>
+                </td>
+                <td>
+                    <button class="btn btn-sm btn-outline-danger" onclick="timeEntryService.removeActivity('${activity.id}')">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </td>
+            `;
+            tbody.appendChild(row);
+        });
+    }
+    
+    // Render hierarchical view for admin reports
+    static renderHierarchicalView(tbody, data) {
+        if (!tbody) return;
+        
+        tbody.innerHTML = '';
+        
+        if (!data || data.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="6" class="text-center py-4">
+                        <i class="bi bi-search me-2"></i>
+                        Nessun dato trovato per i filtri selezionati
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+        
+        data.forEach(employeeData => {
+            // Employee header row
+            const employeeRow = document.createElement('tr');
+            employeeRow.className = 'table-primary employee-row';
+            employeeRow.style.cursor = 'pointer';
+            employeeRow.innerHTML = `
+                <td>
+                    <i class="bi bi-chevron-down me-2 toggle-icon"></i>
+                    <strong>${employeeData.dipendente.name}</strong>
+                </td>
+                <td><strong>${employeeData.totalDays}</strong></td>
+                <td><strong>${employeeData.totalMinutes}</strong></td>
+                <td><strong>${employeeData.totalHours}</strong></td>
+                <td><strong>${employeeData.totalDecimal}</strong></td>
+                <td>
+                    <button class="btn btn-sm btn-outline-primary" onclick="adminService.editEmployeeActivities('${employeeData.dipendente.id}')">
+                        <i class="bi bi-pencil"></i>
+                    </button>
+                </td>
+            `;
+            tbody.appendChild(employeeRow);
+            
+            // Days container
+            const daysContainer = document.createElement('tr');
+            daysContainer.className = 'days-container';
+            daysContainer.innerHTML = `
+                <td colspan="6" class="p-0">
+                    <div class="collapse show" id="days-${employeeData.dipendente.id}">
+                        <table class="table table-sm mb-0">
+                            <tbody class="days-tbody">
+                                ${this.renderEmployeeDays(employeeData)}
+                            </tbody>
+                        </table>
+                    </div>
+                </td>
+            `;
+            tbody.appendChild(daysContainer);
+        });
+    }
+    
+    // Render flat view for admin reports
+    static renderFlatView(tbody, data) {
+        if (!tbody) return;
+        
+        tbody.innerHTML = '';
+        
+        if (!data || data.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="6" class="text-center py-4">
+                        <i class="bi bi-search me-2"></i>
+                        Nessun dato trovato per i filtri selezionati
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+        
+        data.forEach(employeeData => {
+            employeeData.ore.forEach(day => {
+                if (day.attivita && day.attivita.length > 0) {
+                    day.attivita.forEach(activity => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>
+                                <div class="fw-bold">${employeeData.dipendente.name}</div>
+                                <small class="text-muted">${formatDate(day.data)}</small>
+                            </td>
+                            <td>
+                                <span class="badge bg-${this.getActivityBadgeColor(activity.tipo)}">${activity.tipo}</span>
+                            </td>
+                            <td>${activity.nome}</td>
+                            <td>${minutesToHHMM(activity.minutiEffettivi || activity.minuti)}</td>
+                            <td>${minutesToDecimal(activity.minutiEffettivi || activity.minuti)}</td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-primary" onclick="adminService.viewDayDetails('${employeeData.dipendente.id}', '${day.data}')">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                            </td>
+                        `;
+                        tbody.appendChild(row);
+                    });
+                }
+            });
+        });
+    }
+    
+    // Render employee days for hierarchical view
+    static renderEmployeeDays(employeeData) {
+        if (!employeeData.ore || employeeData.ore.length === 0) {
+            return `
+                <tr>
+                    <td colspan="6" class="text-center py-2 text-muted">
+                        <i class="bi bi-calendar-x me-1"></i>
+                        Nessuna attività registrata
+                    </td>
+                </tr>
+            `;
+        }
+        
+        return employeeData.ore.map(day => {
+            let dayMinutes = 0;
+            if (day.attivita) {
+                dayMinutes = day.attivita.reduce((sum, activity) => 
+                    sum + (activity.minutiEffettivi || activity.minuti || 0), 0);
+            }
+            
+            return `
+                <tr class="day-row">
+                    <td class="ps-4">
+                        <i class="bi bi-calendar-day me-2"></i>
+                        ${formatDate(day.data)}
+                        <span class="badge bg-${this.getStatusBadgeColor(day.stato)} ms-2">${day.stato}</span>
+                    </td>
+                    <td>${day.attivita ? day.attivita.length : 0}</td>
+                    <td>${dayMinutes}</td>
+                    <td>${minutesToHHMM(dayMinutes)}</td>
+                    <td>${minutesToDecimal(dayMinutes)}</td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-info" onclick="adminService.viewDayDetails('${employeeData.dipendente.id}', '${day.data}')">
+                            <i class="bi bi-eye"></i>
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+    
+    // Setup employee toggle functionality
+    static setupEmployeeToggle() {
+        document.querySelectorAll('.employee-row').forEach(row => {
+            row.addEventListener('click', function() {
+                const icon = this.querySelector('.toggle-icon');
+                const employeeId = this.querySelector('button').onclick.toString().match(/'([^']+)'/)[1];
+                const collapse = document.getElementById(`days-${employeeId}`);
+                
+                if (collapse) {
+                    const bsCollapse = new bootstrap.Collapse(collapse, { toggle: false });
+                    
+                    if (collapse.classList.contains('show')) {
+                        bsCollapse.hide();
+                        icon.className = 'bi bi-chevron-right me-2 toggle-icon';
+                    } else {
+                        bsCollapse.show();
+                        icon.className = 'bi bi-chevron-down me-2 toggle-icon';
+                    }
+                }
+            });
+        });
+    }
+    
+    // Get badge color for activity type
+    static getActivityBadgeColor(tipo) {
+        return BADGE_COLORS[tipo] || 'secondary';
+    }
+    
+    // Get badge color for day status
+    static getStatusBadgeColor(stato) {
+        return BADGE_COLORS[stato.toLowerCase()] || 'secondary';
+    }
+}
