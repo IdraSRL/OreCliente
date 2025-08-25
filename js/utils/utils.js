@@ -3,7 +3,7 @@ export { minutesToHHMM, minutesToDecimal, HHMMToMinutes, formatTime, calculateDu
 export { formatDate, getTodayString, getYesterdayString, getMonthRange, isDateAllowed, isDateAllowedForAdmin, formatDateTime, getWeekday } from './date-utils.js';
 export { sanitizeString, validateMinutes, validatePersone, validateEmail, validateCodiceFiscale, validatePassword } from './validation-utils.js';
 export { saveToStorage, loadFromStorage, removeFromStorage, clearStorage } from './storage-utils.js';
-export { showToast, showGlobalLoading, showConfirm } from './ui-utils.js';
+export { showToast, showGlobalLoading, showConfirm, showLoading, hideLoading } from './ui-utils.js';
 
 // Performance
 export function debounce(func, wait) {

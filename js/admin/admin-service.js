@@ -278,7 +278,7 @@ class AdminService {
             showToast('Errore durante il salvataggio', 'error');
         } finally {
             const btn = document.getElementById('saveEmployeeBtn');
-            const text = employeeData.id ? '<i class="bi bi-pencil me-2"></i>Aggiorna' : '<i class="bi bi-save me-2"></i>Salva';
+            const text = (employeeData && employeeData.id) ? '<i class="bi bi-pencil me-2"></i>Aggiorna' : '<i class="bi bi-save me-2"></i>Salva';
             ButtonUtils.hideLoading(btn, text);
         }
     }

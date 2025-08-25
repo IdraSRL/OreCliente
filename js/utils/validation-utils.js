@@ -14,16 +14,16 @@ export function sanitizeString(str) {
 // Validate minutes input
 export function validateMinutes(minutes) {
     const num = parseInt(minutes, 10);
-    return !isNaN(num) && 
-           num >= VALIDATION_RULES.MIN_MINUTES && 
+    return !isNaN(num) &&
+           num >= VALIDATION_RULES.MIN_MINUTES &&
            num <= VALIDATION_RULES.MAX_MINUTES;
 }
 
 // Validate number of people
 export function validatePersone(persone) {
     const num = parseInt(persone, 10);
-    return !isNaN(num) && 
-           num >= VALIDATION_RULES.MIN_PERSONE && 
+    return !isNaN(num) &&
+           num >= VALIDATION_RULES.MIN_PERSONE &&
            num <= VALIDATION_RULES.MAX_PERSONE;
 }
 

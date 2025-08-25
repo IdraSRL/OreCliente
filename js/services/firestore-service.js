@@ -184,7 +184,7 @@ export class FirestoreService {
                 };
             }
             
-            const employeeName = employee.name ? employee.name.replace(/[^a-zA-Z0-9]/g, '_') : employeeId;
+            const employeeName = employee.name ? employee.name.replace(/[^a-zA-Z0-9_]/g, '_') : employeeId;
             
             const docRef = doc(db, DB_STRUCTURE.CLIENT_COLLECTION, DB_STRUCTURE.SUBCOLLECTIONS.DIPENDENTI, employeeName, DB_STRUCTURE.EMPLOYEE_SUBCOLLECTIONS.ORE, date);
             const docSnap = await getDoc(docRef);
@@ -224,7 +224,7 @@ export class FirestoreService {
                 throw new Error(`Dipendente non trovato: ${employeeId}`);
             }
             
-            const employeeName = employee.name ? employee.name.replace(/[^a-zA-Z0-9]/g, '_') : employeeId;
+            const employeeName = employee.name ? employee.name.replace(/[^a-zA-Z0-9_]/g, '_') : employeeId;
             
             const docRef = doc(db, DB_STRUCTURE.CLIENT_COLLECTION, DB_STRUCTURE.SUBCOLLECTIONS.DIPENDENTI, employeeName, DB_STRUCTURE.EMPLOYEE_SUBCOLLECTIONS.ORE, date);
             await setDoc(docRef, {
@@ -246,7 +246,7 @@ export class FirestoreService {
             // Ottieni il nome del dipendente per usarlo come ID documento
             const employees = await this.getEmployees();
             const employee = employees.find(emp => emp.id === employeeId);
-            const employeeName = employee ? employee.name.replace(/[^a-zA-Z0-9]/g, '_') : employeeId;
+            const employeeName = employee ? employee.name.replace(/[^a-zA-Z0-9_]/g, '_') : employeeId;
             
             const collRef = collection(db, DB_STRUCTURE.CLIENT_COLLECTION, DB_STRUCTURE.SUBCOLLECTIONS.DIPENDENTI, employeeName, DB_STRUCTURE.EMPLOYEE_SUBCOLLECTIONS.ORE);
             const q = query(
@@ -313,7 +313,7 @@ export class FirestoreService {
             // Ottieni il nome del dipendente per usarlo come ID documento
             const employees = await this.getEmployees();
             const employee = employees.find(emp => emp.id === employeeId);
-            const employeeName = employee ? employee.name.replace(/[^a-zA-Z0-9]/g, '_') : employeeId;
+            const employeeName = employee ? employee.name.replace(/[^a-zA-Z0-9_]/g, '_') : employeeId;
             
             const docRef = doc(db, DB_STRUCTURE.CLIENT_COLLECTION, DB_STRUCTURE.SUBCOLLECTIONS.DIPENDENTI, employeeName, DB_STRUCTURE.EMPLOYEE_SUBCOLLECTIONS.BADGE, date);
             const docSnap = await getDoc(docRef);
@@ -334,7 +334,7 @@ export class FirestoreService {
             // Ottieni il nome del dipendente per usarlo come ID documento
             const employees = await this.getEmployees();
             const employee = employees.find(emp => emp.id === employeeId);
-            const employeeName = employee ? employee.name.replace(/[^a-zA-Z0-9]/g, '_') : employeeId;
+            const employeeName = employee ? employee.name.replace(/[^a-zA-Z0-9_]/g, '_') : employeeId;
             
             const docRef = doc(db, DB_STRUCTURE.CLIENT_COLLECTION, DB_STRUCTURE.SUBCOLLECTIONS.DIPENDENTI, employeeName, DB_STRUCTURE.EMPLOYEE_SUBCOLLECTIONS.BADGE, date);
             await setDoc(docRef, {
@@ -354,7 +354,7 @@ export class FirestoreService {
             // Ottieni il nome del dipendente per usarlo come ID documento
             const employees = await this.getEmployees();
             const employee = employees.find(emp => emp.id === employeeId);
-            const employeeName = employee ? employee.name.replace(/[^a-zA-Z0-9]/g, '_') : employeeId;
+            const employeeName = employee ? employee.name.replace(/[^a-zA-Z0-9_]/g, '_') : employeeId;
             
             // Nota: In Firestore non possiamo eliminare una collezione direttamente
             // Dovremmo eliminare tutti i documenti uno per uno

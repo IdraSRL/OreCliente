@@ -207,7 +207,7 @@ class TimeEntryService {
         document.getElementById('workDate').value = today;
         this.changeDate(today);
     }
-
+                cognome: this.currentUser.name ? this.currentUser.name.split(' ').slice(1).join(' ') || '' : '',
     async changeDate(newDate) {
         if (!newDate) return;
 
