@@ -187,10 +187,16 @@ class AdminService {
                 if (employee) {
                     const ore = await FirestoreService.getOrePeriodo(employee.id, start, end);
                     riepilogoData = [{ dipendente: employee, ore: ore }];
+                } else {
+                    riepilogoData = [];
                 }
             } else {
                 // Carica dati per tutti i dipendenti
                 riepilogoData = await FirestoreService.getRiepilogoCompleto(start, end);
+            }
+
+            if (!riepilogoData) {
+                riepilogoData = [];
             }
 
             const processedData = ReportService.processReportData(riepilogoData);
@@ -200,6 +206,11 @@ class AdminService {
         } catch (error) {
             console.error('Errore caricamento riepilogo:', error);
             showToast('Errore caricamento dati', 'error');
+            
+            // Aggiorna UI con dati vuoti in caso di errore
+            const emptyData = ReportService.processReportData([]);
+            this.updateRiepilogoTable(emptyData.data);
+            this.updateStats(emptyData.totalStats);
         } finally {
             showGlobalLoading(false);
         }

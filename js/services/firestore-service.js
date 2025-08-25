@@ -186,7 +186,10 @@ export class FirestoreService {
             
             const employeeName = employee.name ? employee.name.replace(/[^a-zA-Z0-9_]/g, '_') : employeeId;
             
-            const docRef = doc(db, DB_STRUCTURE.CLIENT_COLLECTION, DB_STRUCTURE.SUBCOLLECTIONS.DIPENDENTI, employeeName, DB_STRUCTURE.EMPLOYEE_SUBCOLLECTIONS.ORE, date);
+            // Costruisci il path corretto per il documento
+            const documentPath = `${DB_STRUCTURE.CLIENT_COLLECTION}/${DB_STRUCTURE.SUBCOLLECTIONS.DIPENDENTI}/${employeeName}/${DB_STRUCTURE.EMPLOYEE_SUBCOLLECTIONS.ORE}/${date}`;
+            const docRef = doc(db, documentPath);
+            
             const docSnap = await getDoc(docRef);
             
             if (docSnap.exists()) {
@@ -226,7 +229,10 @@ export class FirestoreService {
             
             const employeeName = employee.name ? employee.name.replace(/[^a-zA-Z0-9_]/g, '_') : employeeId;
             
-            const docRef = doc(db, DB_STRUCTURE.CLIENT_COLLECTION, DB_STRUCTURE.SUBCOLLECTIONS.DIPENDENTI, employeeName, DB_STRUCTURE.EMPLOYEE_SUBCOLLECTIONS.ORE, date);
+            // Costruisci il path corretto per il documento
+            const documentPath = `${DB_STRUCTURE.CLIENT_COLLECTION}/${DB_STRUCTURE.SUBCOLLECTIONS.DIPENDENTI}/${employeeName}/${DB_STRUCTURE.EMPLOYEE_SUBCOLLECTIONS.ORE}/${date}`;
+            const docRef = doc(db, documentPath);
+            
             await setDoc(docRef, {
                 data: date,
                 stato: data.stato || 'Normale',
@@ -246,9 +252,18 @@ export class FirestoreService {
             // Ottieni il nome del dipendente per usarlo come ID documento
             const employees = await this.getEmployees();
             const employee = employees.find(emp => emp.id === employeeId);
-            const employeeName = employee ? employee.name.replace(/[^a-zA-Z0-9_]/g, '_') : employeeId;
             
-            const collRef = collection(db, DB_STRUCTURE.CLIENT_COLLECTION, DB_STRUCTURE.SUBCOLLECTIONS.DIPENDENTI, employeeName, DB_STRUCTURE.EMPLOYEE_SUBCOLLECTIONS.ORE);
+            if (!employee) {
+                console.warn(`Dipendente non trovato: ${employeeId}`);
+                return [];
+            }
+            
+            const employeeName = employee.name ? employee.name.replace(/[^a-zA-Z0-9_]/g, '_') : employeeId;
+            
+            // Costruisci il path corretto per la collezione
+            const collectionPath = `${DB_STRUCTURE.CLIENT_COLLECTION}/${DB_STRUCTURE.SUBCOLLECTIONS.DIPENDENTI}/${employeeName}/${DB_STRUCTURE.EMPLOYEE_SUBCOLLECTIONS.ORE}`;
+            const collRef = collection(db, collectionPath);
+            
             const q = query(
                 collRef,
                 where('data', '>=', startDate),
@@ -269,7 +284,8 @@ export class FirestoreService {
             return ore;
         } catch (error) {
             console.error('Errore caricamento ore periodo:', error);
-            throw error;
+            // Ritorna array vuoto invece di lanciare errore per evitare crash
+            return [];
         }
     }
     
@@ -293,17 +309,27 @@ export class FirestoreService {
             const riepilogo = [];
             
             for (const employee of employees) {
-                const ore = await this.getOrePeriodo(employee.id, startDate, endDate);
-                riepilogo.push({
-                    dipendente: employee,
-                    ore: ore
-                });
+                try {
+                    const ore = await this.getOrePeriodo(employee.id, startDate, endDate);
+                    riepilogo.push({
+                        dipendente: employee,
+                        ore: ore
+                    });
+                } catch (employeeError) {
+                    console.error(`Errore caricamento ore per dipendente ${employee.id}:`, employeeError);
+                    // Aggiungi comunque il dipendente con ore vuote
+                    riepilogo.push({
+                        dipendente: employee,
+                        ore: []
+                    });
+                }
             }
             
             return riepilogo;
         } catch (error) {
             console.error('Errore caricamento riepilogo completo:', error);
-            throw error;
+            // Ritorna array vuoto invece di lanciare errore
+            return [];
         }
     }
     
@@ -313,9 +339,18 @@ export class FirestoreService {
             // Ottieni il nome del dipendente per usarlo come ID documento
             const employees = await this.getEmployees();
             const employee = employees.find(emp => emp.id === employeeId);
-            const employeeName = employee ? employee.name.replace(/[^a-zA-Z0-9_]/g, '_') : employeeId;
             
-            const docRef = doc(db, DB_STRUCTURE.CLIENT_COLLECTION, DB_STRUCTURE.SUBCOLLECTIONS.DIPENDENTI, employeeName, DB_STRUCTURE.EMPLOYEE_SUBCOLLECTIONS.BADGE, date);
+            if (!employee) {
+                console.warn(`Dipendente non trovato per badge: ${employeeId}`);
+                return null;
+            }
+            
+            const employeeName = employee.name ? employee.name.replace(/[^a-zA-Z0-9_]/g, '_') : employeeId;
+            
+            // Costruisci il path corretto per il documento
+            const documentPath = `${DB_STRUCTURE.CLIENT_COLLECTION}/${DB_STRUCTURE.SUBCOLLECTIONS.DIPENDENTI}/${employeeName}/${DB_STRUCTURE.EMPLOYEE_SUBCOLLECTIONS.BADGE}/${date}`;
+            const docRef = doc(db, documentPath);
+            
             const docSnap = await getDoc(docRef);
             
             if (docSnap.exists()) {
@@ -325,7 +360,7 @@ export class FirestoreService {
             }
         } catch (error) {
             console.error('Errore caricamento stato badge:', error);
-            throw error;
+            return null;
         }
     }
     
@@ -334,9 +369,17 @@ export class FirestoreService {
             // Ottieni il nome del dipendente per usarlo come ID documento
             const employees = await this.getEmployees();
             const employee = employees.find(emp => emp.id === employeeId);
-            const employeeName = employee ? employee.name.replace(/[^a-zA-Z0-9_]/g, '_') : employeeId;
             
-            const docRef = doc(db, DB_STRUCTURE.CLIENT_COLLECTION, DB_STRUCTURE.SUBCOLLECTIONS.DIPENDENTI, employeeName, DB_STRUCTURE.EMPLOYEE_SUBCOLLECTIONS.BADGE, date);
+            if (!employee) {
+                throw new Error(`Dipendente non trovato per salvataggio badge: ${employeeId}`);
+            }
+            
+            const employeeName = employee.name ? employee.name.replace(/[^a-zA-Z0-9_]/g, '_') : employeeId;
+            
+            // Costruisci il path corretto per il documento
+            const documentPath = `${DB_STRUCTURE.CLIENT_COLLECTION}/${DB_STRUCTURE.SUBCOLLECTIONS.DIPENDENTI}/${employeeName}/${DB_STRUCTURE.EMPLOYEE_SUBCOLLECTIONS.BADGE}/${date}`;
+            const docRef = doc(db, documentPath);
+            
             await setDoc(docRef, {
                 ...badgeState,
                 ultimaModifica: new Date().toISOString()
