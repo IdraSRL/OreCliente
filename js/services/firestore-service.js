@@ -345,13 +345,12 @@ export class FirestoreService {
             
             const employeeName = employee.name ? employee.name.replace(/[^a-zA-Z0-9_]/g, '_') : employeeId;
             
-            // Costruisci il path corretto per il documento badge nella sottocollezione badge
+            // Costruisci il path corretto per il documento badge (4 segmenti - pari)
             const docRef = doc(db, 
                 DB_STRUCTURE.CLIENT_COLLECTION, 
                 DB_STRUCTURE.SUBCOLLECTIONS.DIPENDENTI, 
                 employeeName, 
-                'badge',
-                date
+                `badge_${date}`
             );
             
             const docSnap = await getDoc(docRef);
@@ -379,13 +378,12 @@ export class FirestoreService {
             
             const employeeName = employee.name ? employee.name.replace(/[^a-zA-Z0-9_]/g, '_') : employeeId;
             
-            // Costruisci il path corretto per il documento badge nella sottocollezione badge
+            // Costruisci il path corretto per il documento badge (4 segmenti - pari)
             const docRef = doc(db, 
                 DB_STRUCTURE.CLIENT_COLLECTION, 
                 DB_STRUCTURE.SUBCOLLECTIONS.DIPENDENTI, 
                 employeeName, 
-                'badge',
-                date
+                `badge_${date}`
             );
             
             await setDoc(docRef, {
