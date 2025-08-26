@@ -1,0 +1,68 @@
+/* footer.css — Fixed transparent footer con logo e link */
+
+:root {
+  --footer-height: auto;
+  --footer-padding:10px;
+  --footer-bg: rgba(0, 0, 0, 0.1); /* quasi trasparente */
+  --footer-fg: #fff;
+  --footer-border: rgba(255,255,255,0.2);
+  --footer-shadow: 0 -2px 12px rgba(0,0,0,0.15);
+  --footer-padding-x: 16px;
+}
+
+html, body { height: 100%; }
+body {
+  margin: 0;
+  padding-bottom: calc(var(--footer-height) + env(safe-area-inset-bottom, 0px));
+}
+
+.app-footer {
+  position:fixed;
+  left: 0; right: 0; bottom: 0;
+  height: calc(var(--footer-height) + env(safe-area-inset-bottom, 0px));
+  background: var(--footer-bg);
+  color: var(--footer-fg);
+  border-top: 1px solid var(--footer-border);
+  box-shadow: var(--footer-shadow);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--footer-padding-x);
+  box-sizing: border-box;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.app-footer__content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  font: 500 14px/1.2 system-ui, sans-serif;
+}
+
+.app-footer__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.app-footer__brand img {
+  height: 40px;
+  width: auto;
+  display: block;
+}
+
+.app-footer a {
+  color: inherit;
+  text-decoration: none;
+  opacity: .9;
+}
+.app-footer a:hover { opacity: 1; text-decoration: underline; }
+
+@media (max-width: 480px) {
+  :root { --footer-height: 56px; }
+  .app-footer__content { font-size: 13px; }
+  .app-footer__brand img { height: 32px; }
+}

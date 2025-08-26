@@ -1,8 +1,8 @@
 // Version management system
 export const VERSION = {
-    APP: '1.4.1',
-    CSS: '1.4.1',
-    JS: '1.4.1',
+    APP: '1.4.2',
+    CSS: '1.4.2',
+    JS: '1.4.2',
     BUILD: Date.now()
 };
 

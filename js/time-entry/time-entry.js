@@ -1,97 +1,164 @@
 import { AuthService } from '../auth/auth.js';
 import { FirestoreService } from '../services/firestore-service.js';
+import { VERSION } from '../config/version.js';
 import { EmployeeService } from '../services/employee-service.js';
 import { CantiereService } from '../services/cantiere-service.js';
+import { BadgeService } from '../services/badge-service.js';
 import { PhotoService } from '../services/photo-service.js';
-import { BadgeManager } from './badge-manager.js';
-import { ActivityManager } from './activity-manager.js';
-import { CantiereSelector } from './cantiere-selector.js';
-import { DateManager } from './date-manager.js';
-import { ReportManager } from './report-manager.js';
-import { debounce, generateId, showToast, showGlobalLoading } from '../utils/utils.js';
-import { getTodayString } from '../utils/date-utils.js';
+import { TableRenderer } from '../ui/table-renderer.js';
+import { ButtonUtils } from '../ui/button-utils.js';
+import {
+  debounce,
+  generateId,
+  minutesToHHMM,
+  minutesToDecimal,
+  getTodayString,
+  getYesterdayString,
+  formatDate,
+  isDateAllowed,
+  getWeekday,
+  showToast,
+  showGlobalLoading,
+  showConfirm,
+} from '../utils/utils.js';
+import { getMonthRange } from '../utils/date-utils.js';
 import { ErrorHandler } from '../utils/error-handler.js';
 import { MemoryManager } from '../utils/memory-manager.js';
 import { ConnectionMonitor } from '../services/connection-monitor.js';
 
-import { SaveQueue } from '../utils/save-queue.js';
+/* ========== Robust save queue to serialize writes and avoid races ========== */
+class SaveQueue {
+  constructor() {
+    this._saving = false;
+    this._pending = false;
+    this._lastTask = null;
+    this._maxRetries = 3;
+  }
+
+  async save(task) {
+    this._lastTask = task;
+    if (this._saving) {
+      this._pending = true;
+      return;
+    }
+    this._saving = true;
+    let retries = 0;
+
+    try {
+      while (retries <= this._maxRetries) {
+        try {
+          await task();
+          break;
+        } catch (error) {
+          retries++;
+          if (retries > this._maxRetries) {
+            throw error;
+          }
+          // Exponential backoff
+          const delay = Math.min(1000 * Math.pow(2, retries - 1), 5000);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+      }
+    } catch (e) {
+      ErrorHandler.logError(e, 'SaveQueue');
+
+      // Add to retry queue if offline
+      if (!ConnectionMonitor.isOnline) {
+        ConnectionMonitor.addToRetryQueue(task, 'SaveQueue operation');
+      }
+    } finally {
+      const shouldRunAgain = this._pending;
+      this._pending = false;
+      this._saving = false;
+      if (shouldRunAgain && this._lastTask) {
+        const last = this._lastTask;
+        this._lastTask = null;
+        setTimeout(() => this.save(last), 100); // Prevent immediate recursion
+      }
+    }
+  }
+}
 
 /* ============================== Main Service ============================== */
 class TimeEntryService {
   constructor() {
+    // Multi-selezione cantieri
+    this.selectedCantieri = new Set();
+
     this.currentUser = null;
     this.employeeService = new EmployeeService();
     this.cantiereService = new CantiereService();
-    
-    // Managers
-    this.badgeManager = null;
-    this.activityManager = null;
-    this.cantiereSelector = null;
-    this.dateManager = null;
-    this.reportManager = null;
-    
+    this.badgeService = null;
+
+    this.currentDate = getTodayString();
     this.currentDayData = {
-      data: getTodayString(),
+      data: this.currentDate,
       stato: 'Normale',
       attivita: [],
     };
 
+    this.autoSaveTimer = null;
+    this.badgeTimer = null;
+
+    // coda salvataggi
     this.saveQueue = new SaveQueue();
+
+    // Avvio inizializzazione (async non bloccante)
     this.init();
   }
 
   async init() {
+    // Protezione pagina per dipendente
     if (!AuthService.initPageProtection('employee')) return;
 
+    // Aggiorna immediatamente l'UI dopo l'entrata
+    this.updateBadgeUI();
     this.currentUser = AuthService.getCurrentUser();
+
     if (!this.currentUser || !this.currentUser.id) {
       console.error('Utente non valido');
       AuthService.logout();
+      // Aggiorna immediatamente l'UI dopo l'uscita
+      this.updateBadgeUI();
       return;
     }
 
-    // Initialize managers
-    await this.initializeManagers();
-    
-    this.setupEventListeners();
-    await this.loadInitialData();
-    
-    setTimeout(() => this.loadCurrentDay(), 500);
-    this.setupAutoSave();
-    this.setupModalEvents();
-    this.ensureNoteModal();
-  }
-
-  async initializeManagers() {
-    // Initialize activity manager
-    this.activityManager = new ActivityManager(async () => {
-      this.currentDayData.attivita = this.activityManager.getActivities();
-      this.autoSave();
-      await this.saveNow();
-    });
-
-    // Initialize badge manager
-    this.badgeManager = new BadgeManager(this.currentUser.id, async (activity) => {
-      await this.activityManager.addActivity(activity);
-    });
-    await this.badgeManager.init();
-
-    // Initialize cantiere selector
-    this.cantiereSelector = new CantiereSelector(this.cantiereService, async (activities) => {
-      for (const activity of activities) {
-        await this.activityManager.addActivity(activity);
+    // Badge service
+    this.badgeService = new BadgeService(this.currentUser.id);
+    await this.badgeService.startWatcher(({ isOpen }) => {
+      const btn = document.getElementById('badgeBtn');
+      const badgeText = document.getElementById('badgeText');
+      if (!btn || !badgeText) return;
+      if (isOpen) {
+        btn.className = 'btn btn-danger w-100';
+        badgeText.textContent = 'Uscita';
+      } else {
+        btn.className = 'btn btn-warning w-100';
+        badgeText.textContent = 'Entrata';
       }
-      this.closeCantiereModal();
     });
 
-    // Initialize date manager
-    this.dateManager = new DateManager((date) => {
-      this.currentDayData.data = date;
-      this.loadCurrentDay();
-    });
+    // Listeners UI
+    this.setupEventListeners();
 
-    // Initialize report manager
-    this.reportManager = new ReportManager(this.currentUser.id);
+    // Dati iniziali
+    await this.loadInitialData();
+
+    // Data corrente (sempre oggi di default)
+    this.setCurrentDate(getTodayString());
+    
+    // Auto-load current day
+    setTimeout(() => this.loadCurrentDay(), 500);
+
+    // Timer badge e autosave
+    this.startBadgeTimer();
+    this.setupAutoSave();
+
+    // Eventi modali
+    this.setupModalEvents();
+
+    // Assicura esistenza modale note
+    this.ensureNoteModal();
   }
 
   /* ------------------------------- UI wiring ------------------------------ */
@@ -100,36 +167,59 @@ class TimeEntryService {
     if (!cantiereModal) return;
 
     cantiereModal.addEventListener('show.bs.modal', () => {
-      if (this.cantiereService.getAllCantieri().length === 0) {
-        this.loadInitialData().then(() => this.cantiereSelector.populateModal());
+      console.log('Debug - Modal cantiere aperto, ricaricamento dati...');
+      const cantieri = this.cantiereService.getAllCantieri();
+      const categorie = this.cantiereService.getAllCategorie();
+      console.log('Debug - Cantieri nel modal:', cantieri.length);
+      console.log('Debug - Categorie nel modal:', categorie.length);
+
+      if (cantieri.length === 0 || categorie.length === 0) {
+        console.log('Debug - Ricaricamento dati necessario');
+        this.loadInitialData().then(() => this.populateCantieriModal());
       } else {
-        this.cantiereSelector.populateModal();
+        console.log('Debug - Dati già presenti, popolamento modal');
+        this.populateCantieriModal();
       }
     });
   }
 
   setupEventListeners() {
+    // Logout
     AuthService.setupLogoutHandlers();
 
+    // Cambio data
+    const workDate = document.getElementById('workDate');
+    if (workDate) {
+      workDate.addEventListener('change', (e) => {
+        this.validateAndSetDate(e.target.value);
+        this.loadCurrentDay(); // Auto-load when date changes
+      });
+    }
+
+    // Carica giornata
     const loadDayBtn = document.getElementById('loadDayBtn');
     if (loadDayBtn) loadDayBtn.addEventListener('click', () => this.loadCurrentDay());
 
+    // Stato giornata
     const dayStatus = document.getElementById('dayStatus');
     if (dayStatus) {
       dayStatus.addEventListener('change', async (e) => {
         this.currentDayData.stato = e.target.value;
-        this.activityManager.updateUI();
+        this.updateActivitiesTable();
         this.autoSave();
         await this.saveNow();
       });
     }
 
+    // Pulsante badge
     const badgeBtn = document.getElementById('badgeBtn');
-    if (badgeBtn) badgeBtn.addEventListener('click', () => this.badgeManager.toggleBadge());
+    if (badgeBtn) badgeBtn.addEventListener('click', () => this.toggleBadge());
 
+    // Aggiungi cantieri selezionati
     const addSelectedBtn = document.getElementById('addSelectedCantiereBtn');
-    if (addSelectedBtn) addSelectedBtn.addEventListener('click', () => this.cantiereSelector.addSelectedCantieri());
+    if (addSelectedBtn) addSelectedBtn.addEventListener('click', () => this.addSelectedCantiere());
 
+    // Form PST
     const pstForm = document.getElementById('pstForm');
     if (pstForm) {
       pstForm.addEventListener('submit', (e) => {
@@ -138,11 +228,20 @@ class TimeEntryService {
       });
     }
 
+    // Carica report
+    const loadReportBtn = document.getElementById('loadReportBtn');
+    if (loadReportBtn) loadReportBtn.addEventListener('click', () => this.loadMonthlyReport());
+    
+    // Auto-load report on month/year change
+    this.setupAutoReport();
+
+    // Cambia persone nel modale cantieri
     const cantierePersone = document.getElementById('cantierePersone');
     if (cantierePersone) {
-      cantierePersone.addEventListener('input', () => this.cantiereSelector.updateSelectionUI());
+      cantierePersone.addEventListener('input', () => this.updateCantiereSelection());
     }
 
+    // Deleghe tabella attività (edit note / delete)
     const activitiesTable = document.getElementById('activitiesTable');
     if (activitiesTable) {
       activitiesTable.addEventListener('click', (e) => {
@@ -153,7 +252,7 @@ class TimeEntryService {
         if (action === 'edit-note') {
           this.openNoteModal(id);
         } else if (action === 'delete-activity') {
-          this.activityManager.removeActivity(id);
+          this.removeActivity(id);
         }
       });
     }
@@ -177,18 +276,34 @@ class TimeEntryService {
     try {
       showGlobalLoading(true, 'Caricamento dati...');
 
+      console.log('Debug - Inizio caricamento dati iniziali');
+
       await Promise.all([
         this.employeeService.loadEmployees(),
         this.cantiereService.loadCantieri(),
         this.cantiereService.loadCategorie(),
       ]);
 
+      console.log('Debug - Dati caricati:');
+      console.log('- Dipendenti:', this.employeeService.getAllEmployees().length);
+      console.log('- Cantieri:', this.cantiereService.getAllCantieri().length);
+      console.log('- Categorie:', this.cantiereService.getAllCategorie().length);
+
+      // Verifica che i dati siano stati caricati correttamente
       const cantieri = this.cantiereService.getAllCantieri();
+      const categorie = this.cantiereService.getAllCategorie();
+
       if (cantieri.length === 0) {
+        console.warn('Nessun cantiere caricato');
         showToast("Nessun cantiere disponibile. Contatta l'amministratore.", 'warning');
       }
-      
+
+      if (categorie.length === 0) {
+        console.warn('Nessuna categoria caricata');
+      }
+      this.populateCantieriModal();
       this.populateEmployeeBadge();
+      this.populateReportYears();
     } catch (error) {
       console.error('Errore caricamento dati iniziali:', error);
       const userMessage = ErrorHandler.handleFirebaseError(error, 'caricamento dati iniziali');
@@ -198,16 +313,50 @@ class TimeEntryService {
     }
   }
 
+  /* ------------------------------ Date control ---------------------------- */
+  validateAndSetDate(dateString) {
+    if (!isDateAllowed(dateString)) {
+      showToast('Puoi inserire ore solo per oggi o ieri', 'warning');
+      const workDate = document.getElementById('workDate');
+      if (workDate) workDate.value = this.currentDate;
+      return;
+    }
+    this.setCurrentDate(dateString);
+  }
+
+  setCurrentDate(dateString) {
+    this.currentDate = dateString;
+    const workDate = document.getElementById('workDate');
+    if (workDate) workDate.value = dateString;
+
+    const displayElement = document.getElementById('selectedDateDisplay');
+    const badgeElement = document.getElementById('selectedDateBadge');
+
+    if (displayElement && badgeElement) {
+      displayElement.textContent = formatDate(dateString);
+
+      if (dateString === getTodayString()) {
+        badgeElement.textContent = 'OGGI';
+        badgeElement.className = 'badge bg-success';
+      } else if (dateString === getYesterdayString()) {
+        badgeElement.textContent = 'IERI';
+        badgeElement.className = 'badge bg-warning';
+      } else {
+        badgeElement.textContent = getWeekday(dateString).toUpperCase();
+        badgeElement.className = 'badge bg-info';
+      }
+    }
+  }
+
   /* --------------------------- Day load & render -------------------------- */
   async loadCurrentDay() {
     try {
       showGlobalLoading(true, 'Caricamento giornata...');
 
-      const currentDate = this.dateManager.getCurrentDate();
-      const dayData = await FirestoreService.getOreLavorative(this.currentUser.id, currentDate);
+      const dayData = await FirestoreService.getOreLavorative(this.currentUser.id, this.currentDate);
 
       this.currentDayData = {
-        data: currentDate,
+        data: this.currentDate,
         stato: dayData.stato || 'Normale',
         attivita: dayData.attivita || [],
       };
@@ -215,7 +364,8 @@ class TimeEntryService {
       const dayStatus = document.getElementById('dayStatus');
       if (dayStatus) dayStatus.value = this.currentDayData.stato;
 
-      this.activityManager.setActivities(this.currentDayData.attivita);
+      this.updateActivitiesTable();
+      this.updateStats();
 
       showToast('Giornata caricata con successo', 'success');
     } catch (error) {
@@ -226,12 +376,318 @@ class TimeEntryService {
     }
   }
 
-  closeCantiereModal() {
+  populateCantieriModal() {
+    const container = document.getElementById('cantieriContainer');
+    if (!container) return;
+
+    console.log('Debug - populateCantieriModal chiamato');
+    console.log('Debug - Cantieri disponibili:', this.cantiereService.getAllCantieri());
+    console.log('Debug - Categorie disponibili:', this.cantiereService.getAllCategorie());
+
+    const cantieriByCategoria = this.cantiereService.getCantieriByCategoria();
+    console.log('Debug - Cantieri per categoria:', cantieriByCategoria);
+    container.innerHTML = '';
+
+    let totalCantieri = 0;
+    let groupsToProcess = cantieriByCategoria;
+
+    if (Array.isArray(groupsToProcess)) {
+      totalCantieri = groupsToProcess.reduce(
+        (total, group) => total + (group.cantieri ? group.cantieri.length : 0),
+        0,
+      );
+    } else {
+      console.error('getCantieriByCategoria() should return an array, got:', typeof groupsToProcess);
+      groupsToProcess = [];
+    }
+
+    console.log('Debug - Totale cantieri trovati:', totalCantieri);
+
+    if (totalCantieri === 0) {
+      container.innerHTML = `
+        <div class="alert alert-warning">
+          <i class="bi bi-exclamation-triangle me-2"></i>
+          Nessun cantiere disponibile. Contatta l'amministratore per configurare i cantieri.<br>
+          <small>Debug: Cantieri totali: ${this.cantiereService.getAllCantieri().length}, Categorie: ${this.cantiereService.getAllCategorie().length}</small>
+        </div>
+      `;
+      return;
+    }
+
+    // Setup toggle all categories button
+    const toggleBtn = document.getElementById('toggleAllCategories');
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', () => this.toggleAllCategories());
+    }
+
+    groupsToProcess.forEach((group) => {
+      if (!group.cantieri || group.cantieri.length === 0) return;
+
+      // Accordion per categoria (mobile-friendly)
+      const categoryAccordion = document.createElement('div');
+      categoryAccordion.className = 'mb-3';
+      const categoryId = `category-${group.categoria.id}`;
+
+      categoryAccordion.innerHTML = `
+        <div class="card border-0" style="border-left: 4px solid ${group.categoria.color} !important;">
+          <div class="card-header bg-transparent border-0 p-2" style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#${categoryId}">
+            <div class="d-flex justify-content-between align-items-center">
+              <h6 class="mb-0 fw-bold" style="color: ${group.categoria.color};">
+                <i class="bi ${group.categoria.icon} me-2"></i>
+                ${group.categoria.name}
+                <span class="badge ms-2" style="background-color: ${group.categoria.color}20; color: ${group.categoria.color};">
+                  ${group.cantieri.length}
+                </span>
+              </h6>
+              <i class="bi bi-chevron-down text-muted category-toggle"></i>
+            </div>
+          </div>
+          <div class="collapse show" id="${categoryId}">
+            <div class="card-body p-2">
+              <div class="cantieri-grid"></div>
+            </div>
+          </div>
+        </div>
+      `;
+      container.appendChild(categoryAccordion);
+
+      const cantieriGrid = categoryAccordion.querySelector('.cantieri-grid');
+
+      group.cantieri.forEach((cantiere) => {
+        const cantiereItem = document.createElement('div');
+        cantiereItem.className = 'cantiere-item mb-2';
+        cantiereItem.innerHTML = `
+          <div class="card cantiere-card h-100" style="cursor: pointer; transition: all 0.2s;" data-cantiere-id="${cantiere.id}">
+            <div class="card-body p-2">
+              <div class="d-flex align-items-center">
+                <div class="form-check me-2">
+                  <input class="form-check-input cantiere-checkbox" type="checkbox" value="${cantiere.id}">
+                </div>
+                <div class="flex-grow-1">
+                  <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                      <h6 class="mb-1 fw-bold" style="font-size: 0.9rem;">${cantiere.name}</h6>
+                      ${cantiere.descrizione ? `<div class="small text-muted mb-2" style="line-height: 1.3;">${cantiere.descrizione}</div>` : ''}
+                      <div class="d-flex align-items-center gap-2">
+                        <span class="badge bg-primary small">${minutesToHHMM(cantiere.minutes)}</span>
+                        <small class="text-muted">${cantiere.minutes} min</small>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+        cantieriGrid.appendChild(cantiereItem);
+      });
+
+      // Setup collapse toggle icon
+      const toggleIcon = categoryAccordion.querySelector('.category-toggle');
+      const collapseElement = categoryAccordion.querySelector('.collapse');
+
+      collapseElement.addEventListener('show.bs.collapse', () => {
+        toggleIcon.className = 'bi bi-chevron-up text-muted category-toggle';
+      });
+
+      collapseElement.addEventListener('hide.bs.collapse', () => {
+        toggleIcon.className = 'bi bi-chevron-down text-muted category-toggle';
+      });
+    });
+
+    // Click card toggla checkbox
+    container.querySelectorAll('.cantiere-card').forEach((card) => {
+      card.addEventListener('click', (e) => {
+        if (e.target && e.target.classList.contains('cantiere-checkbox')) return;
+        const cb = card.querySelector('.cantiere-checkbox');
+        if (!cb) return;
+        cb.checked = !cb.checked;
+        this.toggleCantiereSelection(cb.value, cb.checked);
+      });
+    });
+
+    // Cambio checkbox
+    container.querySelectorAll('.cantiere-checkbox').forEach((cb) => {
+      cb.addEventListener('change', () => this.toggleCantiereSelection(cb.value, cb.checked));
+    });
+  }
+
+  // Compatibilità con eventuali chiamate legacy
+  selectCantiere(cantiereId) {
+    this.toggleCantiereSelection(cantiereId, !this.selectedCantieri.has(cantiereId));
+  }
+
+  toggleCantiereSelection(cantiereId, isSelected) {
+    const card = document.querySelector(`.cantiere-card[data-cantiere-id="${cantiereId}"]`);
+
+    if (isSelected) {
+      this.selectedCantieri.add(cantiereId);
+      if (card) {
+        card.classList.add('border-primary');
+        card.style.backgroundColor = 'rgba(13, 110, 253, 0.1)';
+      }
+    } else {
+      this.selectedCantieri.delete(cantiereId);
+      if (card) {
+        card.classList.remove('border-primary');
+        card.style.backgroundColor = '';
+      }
+      const cb = card ? card.querySelector('.cantiere-checkbox') : null;
+      if (cb) cb.checked = false;
+    }
+
+    const addBtn = document.getElementById('addSelectedCantiereBtn');
+    if (addBtn) addBtn.disabled = this.selectedCantieri.size === 0;
+
+    // Update selection counter and preview
+    this.updateSelectionPreview();
+    this.updateCantiereSelection();
+  }
+
+  updateSelectionPreview() {
+    const selectedCount = document.getElementById('selectedCount');
+    const selectedPreview = document.getElementById('selectedPreview');
+
+    if (selectedCount) {
+      selectedCount.textContent = this.selectedCantieri.size;
+    }
+
+    if (selectedPreview) {
+      if (this.selectedCantieri.size === 0) {
+        selectedPreview.textContent = 'Nessun cantiere selezionato';
+      } else {
+        const selectedNames = Array.from(this.selectedCantieri)
+          .map((id) => {
+            const cantiere = this.cantiereService.getCantiereById(id);
+            return cantiere ? cantiere.name : id;
+          })
+          .slice(0, 3);
+
+        let preview = selectedNames.join(', ');
+        if (this.selectedCantieri.size > 3) {
+          preview += ` e altri ${this.selectedCantieri.size - 3}...`;
+        }
+        selectedPreview.textContent = preview;
+      }
+    }
+  }
+
+  toggleAllCategories() {
+    const toggleBtn = document.getElementById('toggleAllCategories');
+    const collapses = document.querySelectorAll('#cantieriContainer .collapse');
+
+    let allExpanded = true;
+    collapses.forEach((collapse) => {
+      if (!collapse.classList.contains('show')) {
+        allExpanded = false;
+      }
+    });
+
+    if (allExpanded) {
+      // Collapse all
+      collapses.forEach((collapse) => {
+        const bsCollapse = new bootstrap.Collapse(collapse, { toggle: false });
+        bsCollapse.hide();
+      });
+      if (toggleBtn) {
+        toggleBtn.innerHTML = '<i class="bi bi-arrows-expand me-1"></i>Espandi tutto';
+      }
+    } else {
+      // Expand all
+      collapses.forEach((collapse) => {
+        const bsCollapse = new bootstrap.Collapse(collapse, { toggle: false });
+        bsCollapse.show();
+      });
+      if (toggleBtn) {
+        toggleBtn.innerHTML = '<i class="bi bi-arrows-collapse me-1"></i>Comprimi tutto';
+      }
+    }
+  }
+
+  updateCantiereSelection() {
+    let persone = parseInt(document.getElementById('cantierePersone')?.value, 10) || 1;
+    if (isNaN(persone) || persone < 1) persone = 1;
+    if (persone > 50) persone = 50;
+
+    let totalMinutes = 0;
+    this.selectedCantieri.forEach((id) => {
+      const c = this.cantiereService.getCantiereById(id);
+      if (c) totalMinutes += Math.round(c.minutes / persone);
+    });
+
+    const btn = document.getElementById('addSelectedCantiereBtn');
+    if (btn) {
+      btn.innerHTML = `
+        <i class="bi bi-plus me-2"></i>
+        Aggiungi ${this.selectedCantieri.size} cantieri (${minutesToHHMM(totalMinutes)})
+      `;
+    }
+  }
+
+  addSelectedCantiere() {
+    if (!this.selectedCantieri || this.selectedCantieri.size === 0) {
+      showToast('Seleziona almeno un cantiere', 'warning');
+      return;
+    }
+
+    let persone = parseInt(document.getElementById('cantierePersone')?.value, 10) || 1;
+    if (isNaN(persone) || persone < 1) persone = 1;
+    if (persone > 50) persone = 50;
+
+    this.selectedCantieri.forEach((id) => {
+      const c = this.cantiereService.getCantiereById(id);
+      if (!c) return;
+
+      const minutiEff = Math.round(c.minutes / persone);
+      const cat =
+        this.cantiereService.getCategoriaById(c.categoria || 'generale') || {
+          id: 'generale',
+          name: 'Generale',
+        };
+
+      const activity = {
+        id: generateId('cantiere'),
+        cantiereId: c.id,
+        nome: c.name,
+        categoriaId: cat.id,
+        categoriaName: cat.name,
+        note: c.descrizione || '',
+        minuti: c.minutes,
+        persone,
+        minutiEffettivi: minutiEff,
+        tipo: 'cantiere',
+      };
+
+      this.addActivity(activity);
+    });
+
+    // Chiudi modal e reset selezione
     const modalEl = document.getElementById('cantiereModal');
     if (modalEl) {
-      const modal = bootstrap.Modal.getInstance(modalEl);
-      if (modal) modal.hide();
+      const bs = window.bootstrap && window.bootstrap.Modal;
+      if (bs) {
+        const modal =
+          bs.getInstance(modalEl) ||
+          (typeof bs.getOrCreateInstance === 'function' ? bs.getOrCreateInstance(modalEl) : new bs(modalEl));
+        if (modal) modal.hide();
+      } else {
+        // fallback
+        modalEl.classList.remove('show');
+        modalEl.style.display = 'none';
+        modalEl.setAttribute('aria-hidden', 'true');
+      }
     }
+
+    this.selectedCantieri.clear();
+    document.querySelectorAll('.cantiere-card').forEach((card) => card.classList.remove('border-primary'));
+
+    const addBtn = document.getElementById('addSelectedCantiereBtn');
+    if (addBtn) addBtn.disabled = true;
+
+    const personeInput = document.getElementById('cantierePersone');
+    if (personeInput) personeInput.value = '1';
+
+    showToast('Cantieri aggiunti con successo', 'success');
   }
 
 addPST() {
@@ -269,7 +725,7 @@ addPST() {
     tipo: 'pst',
   };
 
-  this.activityManager.addActivity(activity);
+  this.addActivity(activity);
 
   // Reset form e chiusura modal come prima
   const pstForm = document.getElementById('pstForm');
@@ -293,6 +749,53 @@ addPST() {
 
   showToast('Attività PST aggiunta con successo', 'success');
 }
+
+
+  /* ----------------------------- Activity CRUD ---------------------------- */
+  async addActivity(activity) {
+    // Se è un cantiere: sostituisce quello precedente con stesso cantiereId nello stesso giorno
+    if (activity && activity.tipo === 'cantiere' && activity.cantiereId) {
+      const idx = this.currentDayData.attivita.findIndex(
+        (a) => a.tipo === 'cantiere' && a.cantiereId === activity.cantiereId,
+      );
+      if (idx !== -1) {
+        this.currentDayData.attivita[idx] = activity;
+      } else {
+        this.currentDayData.attivita.push(activity);
+      }
+    } else {
+      this.currentDayData.attivita.push(activity);
+    }
+
+    this.updateActivitiesTable();
+    this.updateStats();
+    this.autoSave();
+    await this.saveNow();
+  }
+
+  async updateActivity(activityId, field, value) {
+    const activity = this.currentDayData.attivita.find((a) => a.id === activityId);
+    if (!activity) return;
+
+    if (field === 'minuti') {
+      const minuti = parseInt(value, 10);
+      if (!Number.isNaN(minuti) && minuti >= 0 && minuti <= 1440) {
+        activity.minuti = minuti;
+        activity.minutiEffettivi = Math.round(minuti / activity.persone);
+      }
+    } else if (field === 'persone') {
+      const persone = parseInt(value, 10);
+      if (!Number.isNaN(persone) && persone >= 1 && persone <= 50) {
+        activity.persone = persone;
+        activity.minutiEffettivi = Math.round(activity.minuti / persone);
+      }
+    }
+
+    this.updateActivitiesTable();
+    this.updateStats();
+    this.autoSave();
+    await this.saveNow();
+  }
 
   // === Note attività (modal) ===
   ensureNoteModal() {
@@ -389,7 +892,134 @@ addPST() {
   }
 
   async updateActivityNote(activityId, note) {
-    await this.activityManager.updateActivity(activityId, 'note', note);
+    const activity = this.currentDayData.attivita.find((a) => a.id === activityId);
+    if (!activity) return;
+    activity.note = note;
+    this.updateActivitiesTable();
+    this.autoSave();
+    await this.saveNow();
+  }
+
+  async removeActivity(activityId) {
+    const confirmed = await showConfirm(
+      'Rimuovi Attività',
+      'Sei sicuro di voler rimuovere questa attività?',
+      'Rimuovi',
+      'Annulla',
+      'danger',
+    );
+
+    if (!confirmed) return;
+
+    this.currentDayData.attivita = this.currentDayData.attivita.filter((a) => a.id !== activityId);
+    this.updateActivitiesTable();
+    this.updateStats();
+    this.autoSave();
+    await this.saveNow();
+  }
+
+  updateActivitiesTable() {
+    const tbody = document.querySelector('#activitiesTable tbody');
+    TableRenderer.renderActivitiesTable(tbody, this.currentDayData.attivita);
+
+    const count = this.currentDayData.attivita.length;
+    const counter = document.getElementById('activityCount');
+    if (counter) counter.textContent = `${count} attività`;
+  }
+
+  updateStats() {
+    let totalMinutes = 0;
+
+    this.currentDayData.attivita.forEach((activity) => {
+      totalMinutes += activity.minutiEffettivi || activity.minuti || 0;
+    });
+
+    const totalHours = minutesToHHMM(totalMinutes);
+    const totalDecimal = minutesToDecimal(totalMinutes);
+    const totalActivities = this.currentDayData.attivita.length;
+
+    // Desktop
+    const totalHoursEl = document.getElementById('totalHours');
+    if (totalHoursEl) totalHoursEl.textContent = totalHours;
+
+    const totalDecimalEl = document.getElementById('totalDecimal');
+    if (totalDecimalEl) totalDecimalEl.textContent = totalDecimal;
+
+    const totalActivitiesEl = document.getElementById('totalActivities');
+    if (totalActivitiesEl) totalActivitiesEl.textContent = totalActivities;
+
+    // Mobile
+    const totalHoursMobile = document.getElementById('totalHoursMobile');
+    if (totalHoursMobile) totalHoursMobile.textContent = totalHours;
+
+    const totalDecimalMobile = document.getElementById('totalDecimalMobile');
+    if (totalDecimalMobile) totalDecimalMobile.textContent = totalDecimal;
+
+    const totalActivitiesMobile = document.getElementById('totalActivitiesMobile');
+    if (totalActivitiesMobile) totalActivitiesMobile.textContent = totalActivities;
+  }
+
+  /* ------------------------------- Badge I/O ------------------------------- */
+  async toggleBadge() {
+    try {
+      const btn = document.getElementById('badgeBtn');
+      if (btn) ButtonUtils.showLoading(btn, 'Elaborazione...');
+
+      if (!this.badgeService.isActive()) {
+        const result = await this.badgeService.clockIn();
+        // Aggiorna immediatamente l'UI dopo il clock-in
+        this.updateBadgeUI();
+        showToast(`Entrata registrata alle ${result.formattedTime}`, 'success');
+      } else {
+        const result = await this.badgeService.clockOut();
+        const badgeActivity = this.badgeService.createBadgeActivity(result);
+        await this.addActivity(badgeActivity);
+        // Aggiorna immediatamente l'UI dopo il clock-out
+        this.updateBadgeUI();
+        showToast(`Uscita registrata: ${result.formattedDuration}`, 'success');
+      }
+    } catch (error) {
+      console.error('Errore toggle badge:', error);
+      showToast(error.message, 'error');
+    } finally {
+      const btn = document.getElementById('badgeBtn');
+      if (btn) {
+        ButtonUtils.hideLoading(btn);
+        // Forza un ulteriore aggiornamento dell'UI dopo il caricamento
+        setTimeout(() => this.updateBadgeUI(), 100);
+      }
+    }
+  }
+
+  updateBadgeUI() {
+    const btn = document.getElementById('badgeBtn');
+    const badgeText = document.getElementById('badgeText');
+
+    if (!btn || !badgeText) return;
+
+    // Verifica lo stato attuale del badge service
+    const isActive = this.badgeService && this.badgeService.isActive();
+    
+    if (isActive) {
+      btn.className = 'btn btn-danger w-100';
+      badgeText.textContent = 'Uscita';
+    } else {
+      btn.className = 'btn btn-warning w-100';
+      badgeText.textContent = 'Entrata';
+    }
+    
+    // Log per debug
+    console.log('Badge UI aggiornato:', { isActive, buttonClass: btn.className, buttonText: badgeText.textContent });
+  }
+
+  startBadgeTimer() {
+    if (this.badgeTimer) clearInterval(this.badgeTimer);
+    
+    // Aggiorna ogni 30 secondi invece di 60 per essere più reattivo
+    this.badgeTimer = setInterval(() => this.updateBadgeUI(), 30000);
+    
+    // Forza aggiornamento immediato
+    this.updateBadgeUI();
   }
 
   /* ------------------------------- Autosave ------------------------------- */
@@ -413,6 +1043,7 @@ addPST() {
     }, 2000);
   }
 
+  /* --------------------------- Employee badge UI -------------------------- */
   populateEmployeeBadge() {
     const employee = this.employeeService.getEmployeeById(this.currentUser.id);
     if (!employee) return;
@@ -454,17 +1085,211 @@ addPST() {
     if (serial) serial.textContent = `#BD24${employee.id.padStart(4, '0')}`;
   }
 
-  async saveNow() {
-    const currentDate = this.dateManager.getCurrentDate();
-    const payload = {
-      ...this.currentDayData,
-      data: currentDate,
-      attivita: this.activityManager.getActivities()
+  /* ------------------------------ Monthly report -------------------------- */
+  populateReportYears() {
+    const yearSelect = document.getElementById('reportYear');
+    if (!yearSelect) return;
+
+    const currentYear = new Date().getFullYear();
+    yearSelect.innerHTML = '';
+
+    for (let year = currentYear - 2; year <= currentYear + 1; year += 1) {
+      const option = document.createElement('option');
+      option.value = year;
+      option.textContent = year;
+      if (year === currentYear) option.selected = true;
+      yearSelect.appendChild(option);
+    }
+
+    const reportMonth = document.getElementById('reportMonth');
+    if (reportMonth) reportMonth.value = new Date().getMonth() + 1;
+  }
+
+  async loadMonthlyReport() {
+    const month = parseInt(document.getElementById('reportMonth')?.value, 10);
+    const year = parseInt(document.getElementById('reportYear')?.value, 10);
+
+    try {
+      showGlobalLoading(true, 'Caricamento report...');
+
+      const { start, end } = getMonthRange(year, month);
+      const ore = await FirestoreService.getOrePeriodo(this.currentUser.id, start, end);
+      this.renderMonthlyReport(ore);
+    } catch (error) {
+      console.error('Errore caricamento report:', error);
+      showToast('Errore caricamento report', 'error');
+    } finally {
+      showGlobalLoading(false);
+    }
+  }
+
+  renderMonthlyReport(ore) {
+    const tbody = document.querySelector('#reportTable tbody');
+    if (!tbody) return;
+
+    tbody.innerHTML = '';
+
+    let totalMinutes = 0;
+    let totalDays = 0;
+    let totalActivities = 0;
+    const cantieriDetails = new Map(); // Per tracciare i cantieri con dettagli
+
+    if (!ore || ore.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="5" class="text-center py-4">
+            <i class="bi bi-calendar-x me-2"></i>
+            Nessuna attività registrata per il periodo selezionato
+          </td>
+        </tr>
+      `;
+    } else {
+      ore.forEach((day) => {
+        let dayMinutes = 0;
+        let dayActivities = 0;
+
+        if (Array.isArray(day.attivita) && day.attivita.length > 0) {
+          totalDays += 1;
+          dayActivities = day.attivita.length;
+
+          day.attivita.forEach((activity) => {
+            const add = activity.minutiEffettivi ?? activity.minuti ?? 0;
+            dayMinutes += Number.isFinite(add) ? add : 0;
+
+            // Aggiungi cantieri alla mappa con dettagli
+            if (activity.tipo === 'cantiere' && activity.nome) {
+              const cantiereKey = activity.nome;
+              if (!cantieriDetails.has(cantiereKey)) {
+                cantieriDetails.set(cantiereKey, {
+                  nome: activity.nome,
+                  totalMinutes: 0,
+                  totalHours: '00:00',
+                  giorni: new Set(),
+                  categoria: activity.categoriaName || 'Generale'
+                });
+              }
+              const cantiere = cantieriDetails.get(cantiereKey);
+              cantiere.totalMinutes += add;
+              cantiere.totalHours = minutesToHHMM(cantiere.totalMinutes);
+              cantiere.giorni.add(formatDate(day.data).split(',')[0]);
+            }
+          });
+        }
+
+        totalMinutes += dayMinutes;
+        totalActivities += dayActivities;
+
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${formatDate(day.data)}</td>
+          <td><span class="badge bg-${this.getStatusBadgeColor(day.stato)}">${day.stato || 'Normale'}</span></td>
+          <td>${dayActivities}</td>
+          <td>${minutesToHHMM(dayMinutes)}</td>
+          <td>${minutesToDecimal(dayMinutes)}</td>
+        `;
+        tbody.appendChild(row);
+      });
+    }
+
+    const reportTotalHours = document.getElementById('reportTotalHours');
+    if (reportTotalHours) reportTotalHours.textContent = minutesToHHMM(totalMinutes);
+
+    const reportTotalDecimal = document.getElementById('reportTotalDecimal');
+    if (reportTotalDecimal) reportTotalDecimal.textContent = minutesToDecimal(totalMinutes);
+
+    const reportWorkingDays = document.getElementById('reportWorkingDays');
+    if (reportWorkingDays) reportWorkingDays.textContent = totalDays;
+
+    const reportTotalActivities = document.getElementById('reportTotalActivities');
+    if (reportTotalActivities) reportTotalActivities.textContent = totalActivities;
+
+    // Aggiorna la lista dei cantieri
+    this.updateCantieriList(Array.from(cantieriDetails.values()));
+  }
+
+  updateCantieriList(cantieriDetails) {
+    const cantieriListElement = document.getElementById('reportCantieriList');
+    if (!cantieriListElement) return;
+
+    if (!Array.isArray(cantieriDetails) || cantieriDetails.length === 0) {
+      cantieriListElement.innerHTML = `
+        <div class="text-center text-muted py-3">
+          <i class="bi bi-building me-2"></i>
+          Nessun cantiere registrato nel periodo selezionato
+        </div>
+      `;
+      return;
+    }
+
+    // Ordina per ore totali (decrescente)
+    cantieriDetails.sort((a, b) => b.totalMinutes - a.totalMinutes);
+
+    const cantieriHtml = cantieriDetails
+      .map((cantiere) => `
+        <div class="card mb-3">
+          <div class="card-body p-3">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+              <div class="d-flex align-items-center">
+                <i class="bi bi-building text-success me-2"></i>
+                <div>
+                  <h6 class="mb-1 fw-bold">${cantiere.nome}</h6>
+                  <small class="text-muted">${cantiere.categoria}</small>
+                </div>
+              </div>
+              <div class="text-end">
+                <div class="fw-bold text-primary">${cantiere.totalHours}</div>
+                <small class="text-muted">${minutesToDecimal(cantiere.totalMinutes)} ore</small>
+              </div>
+            </div>
+            <div class="d-flex justify-content-between align-items-center">
+              <small class="text-muted">
+                <i class="bi bi-calendar-check me-1"></i>
+                ${cantiere.giorni.size} giorni lavorati
+              </small>
+              <small class="text-muted">
+                ${cantiere.totalMinutes} minuti totali
+              </small>
+            </div>
+            <div class="mt-2">
+              <small class="text-muted d-block">
+                <strong>Giorni:</strong> ${Array.from(cantiere.giorni).join(', ')}
+              </small>
+            </div>
+          </div>
+        </div>
+      `)
+      .join('');
+
+    cantieriListElement.innerHTML = `
+      <div class="mb-2">
+        <strong class="text-primary">
+          <i class="bi bi-list-ul me-1"></i>
+          Cantieri lavorati (${cantieriDetails.length}):
+        </strong>
+      </div>
+      ${cantieriHtml}
+    `;
+  }
+
+  /* ----------------------------- Helpers / misc --------------------------- */
+  getStatusBadgeColor(stato) {
+    const colors = {
+      Normale: 'success',
+      Riposo: 'secondary',
+      Ferie: 'warning',
+      Malattia: 'danger',
     };
+    return colors[stato] || 'secondary';
+  }
+
+  async saveNow() {
+    const payload = JSON.parse(JSON.stringify(this.currentDayData));
+    const userId = this.currentUser.id;
+    const date = this.currentDate;
 
     await this.saveQueue.save(async () => {
       try {
-        await FirestoreService.saveOreLavorative(this.currentUser.id, currentDate, payload);
+        await FirestoreService.saveOreLavorative(userId, date, payload);
         const autoSaveStatus = document.getElementById('autoSaveStatus');
         if (autoSaveStatus) autoSaveStatus.innerHTML = '<i class="bi bi-cloud-check me-1"></i>Salvato';
         const lastSaved = document.getElementById('lastSaved');
@@ -478,24 +1303,33 @@ addPST() {
     });
   }
 
+  // Cleanup risorse
   destroy() {
-    // Destroy managers
-    if (this.badgeManager) {
-      this.badgeManager.destroy();
-      this.badgeManager = null;
+    // Clear timers
+    if (this.autoSaveTimer) {
+      clearTimeout(this.autoSaveTimer);
+      this.autoSaveTimer = null;
+    }
+    if (this.badgeTimer) {
+      clearInterval(this.badgeTimer);
+      this.badgeTimer = null;
     }
 
-    if (this.cantiereSelector) {
-      this.cantiereSelector.resetSelection();
-      this.cantiereSelector = null;
+    // Stop badge service
+    if (this.badgeService) {
+      this.badgeService.stopWatcher();
+      this.badgeService = null;
     }
 
-    if (this.activityManager) {
-      this.activityManager.clear();
-      this.activityManager = null;
+    // Clear selected cantieri
+    if (this.selectedCantieri) {
+      this.selectedCantieri.clear();
     }
 
+    // Clean up memory
     MemoryManager.cleanup();
+
+    // Reset current data
     this.currentDayData = null;
     this.currentUser = null;
   }

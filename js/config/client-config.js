@@ -1,5 +1,5 @@
 // Configurazione Multi-Cliente
-export const CLIENT_ID = 'cliente1';   // ← MODIFICARE SOLO QUESTA PER OGNI CLIENTE
+export const CLIENT_ID = 'FastService';   // ← MODIFICARE SOLO QUESTA PER OGNI CLIENTE
 
 // Struttura database migliorata: una collezione per cliente con sottocollezioni
 export const DB_STRUCTURE = {
