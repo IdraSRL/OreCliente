@@ -26,6 +26,7 @@ export class BadgeService {
     try {
       this._unsubscribe = await FirestoreService.watchOpenBadgeSession(this.employeeId, today, (open) => {
         this._open = open;
+        console.log('Badge session aggiornata:', { isOpen: !!open, session: open });
         onStatusChange({ isOpen: !!open, session: open });
       });
     } catch (error) {
@@ -46,7 +47,11 @@ export class BadgeService {
     this._open = null;
   }
 
-  isActive() { return !!this._open; }
+  isActive() { 
+    const active = !!this._open;
+    console.log('Badge isActive check:', { active, session: this._open });
+    return active;
+  }
 
   async clockIn() {
     if (this._open) {
@@ -56,6 +61,7 @@ export class BadgeService {
     const now = new Date();
     const dateISO = getTodayString();
     const sessionId = await FirestoreService.createBadgeSession(this.employeeId, { dateISO, entryTime: now });
+    console.log('Clock-in completato:', { sessionId, time: formatTime(now) });
     return { sessionId, formattedTime: formatTime(now) };
   }
 
@@ -65,6 +71,7 @@ export class BadgeService {
     const start = this._toDate(this._open.entryTime);
     const minutes = calculateDuration(start, now);
     await FirestoreService.closeBadgeSession(this.employeeId, this._open.id, { exitTime: now, minutes, dateISO: getTodayString() });
+    console.log('Clock-out completato:', { minutes, duration: minutesToHHMM(minutes) });
     return {
       startTime: start,
       endTime: now,

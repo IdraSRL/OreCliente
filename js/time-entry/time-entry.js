@@ -943,11 +943,15 @@ addPST() {
 
       if (!this.badgeService.isActive()) {
         const result = await this.badgeService.clockIn();
+        // Aggiorna immediatamente l'UI dopo il clock-in
+        this.updateBadgeUI();
         showToast(`Entrata registrata alle ${result.formattedTime}`, 'success');
       } else {
         const result = await this.badgeService.clockOut();
         const badgeActivity = this.badgeService.createBadgeActivity(result);
         await this.addActivity(badgeActivity);
+        // Aggiorna immediatamente l'UI dopo il clock-out
+        this.updateBadgeUI();
         showToast(`Uscita registrata: ${result.formattedDuration}`, 'success');
       }
     } catch (error) {
@@ -955,7 +959,11 @@ addPST() {
       showToast(error.message, 'error');
     } finally {
       const btn = document.getElementById('badgeBtn');
-      if (btn) ButtonUtils.hideLoading(btn);
+      if (btn) {
+        ButtonUtils.hideLoading(btn);
+        // Forza un ulteriore aggiornamento dell'UI dopo il caricamento
+        setTimeout(() => this.updateBadgeUI(), 100);
+      }
     }
   }
 
@@ -963,19 +971,30 @@ addPST() {
     const btn = document.getElementById('badgeBtn');
     const badgeText = document.getElementById('badgeText');
 
-    if (this.badgeService && this.badgeService.isActive()) {
-      if (btn) btn.className = 'btn btn-danger w-100';
-      if (badgeText) badgeText.textContent = 'Uscita';
+    if (!btn || !badgeText) return;
+
+    // Verifica lo stato attuale del badge service
+    const isActive = this.badgeService && this.badgeService.isActive();
+    
+    if (isActive) {
+      btn.className = 'btn btn-danger w-100';
+      badgeText.textContent = 'Uscita';
     } else {
-      if (btn) btn.className = 'btn btn-warning w-100';
-      if (badgeText) badgeText.textContent = 'Entrata';
+      btn.className = 'btn btn-warning w-100';
+      badgeText.textContent = 'Entrata';
     }
+    
+    // Log per debug
+    console.log('Badge UI aggiornato:', { isActive, buttonClass: btn.className, buttonText: badgeText.textContent });
   }
 
   startBadgeTimer() {
     if (this.badgeTimer) clearInterval(this.badgeTimer);
-    this.badgeTimer = setInterval(() => this.updateBadgeUI(), 60000);
-    // also force immediate paint
+    
+    // Aggiorna ogni 30 secondi invece di 60 per essere più reattivo
+    this.badgeTimer = setInterval(() => this.updateBadgeUI(), 30000);
+    
+    // Forza aggiornamento immediato
     this.updateBadgeUI();
   }
 
@@ -1089,7 +1108,7 @@ addPST() {
     let totalMinutes = 0;
     let totalDays = 0;
     let totalActivities = 0;
-    const cantieriSet = new Set(); // Per tracciare i cantieri unici
+    const cantieriDetails = new Map(); // Per tracciare i cantieri con dettagli
 
     if (!ore || ore.length === 0) {
       tbody.innerHTML = `
@@ -1113,9 +1132,22 @@ addPST() {
             const add = activity.minutiEffettivi ?? activity.minuti ?? 0;
             dayMinutes += Number.isFinite(add) ? add : 0;
 
-            // Aggiungi cantieri alla lista
+            // Aggiungi cantieri alla mappa con dettagli
             if (activity.tipo === 'cantiere' && activity.nome) {
-              cantieriSet.add(activity.nome);
+              const cantiereKey = activity.nome;
+              if (!cantieriDetails.has(cantiereKey)) {
+                cantieriDetails.set(cantiereKey, {
+                  nome: activity.nome,
+                  totalMinutes: 0,
+                  totalHours: '00:00',
+                  giorni: new Set(),
+                  categoria: activity.categoriaName || 'Generale'
+                });
+              }
+              const cantiere = cantieriDetails.get(cantiereKey);
+              cantiere.totalMinutes += add;
+              cantiere.totalHours = minutesToHHMM(cantiere.totalMinutes);
+              cantiere.giorni.add(formatDate(day.data).split(',')[0]);
             }
           });
         }
@@ -1148,14 +1180,14 @@ addPST() {
     if (reportTotalActivities) reportTotalActivities.textContent = totalActivities;
 
     // Aggiorna la lista dei cantieri
-    this.updateCantieriList(Array.from(cantieriSet).sort((a, b) => a.localeCompare(b)));
+    this.updateCantieriList(Array.from(cantieriDetails.values()));
   }
 
-  updateCantieriList(cantieri) {
+  updateCantieriList(cantieriDetails) {
     const cantieriListElement = document.getElementById('reportCantieriList');
     if (!cantieriListElement) return;
 
-    if (!Array.isArray(cantieri) || cantieri.length === 0) {
+    if (!Array.isArray(cantieriDetails) || cantieriDetails.length === 0) {
       cantieriListElement.innerHTML = `
         <div class="text-center text-muted py-3">
           <i class="bi bi-building me-2"></i>
@@ -1165,22 +1197,50 @@ addPST() {
       return;
     }
 
-    const cantieriHtml = cantieri
-      .map(
-        (cantiere) => `
-      <div class="d-flex align-items-center mb-2">
-        <i class="bi bi-building text-success me-2"></i>
-        <span>${cantiere}</span>
-      </div>
-    `,
-      )
+    // Ordina per ore totali (decrescente)
+    cantieriDetails.sort((a, b) => b.totalMinutes - a.totalMinutes);
+
+    const cantieriHtml = cantieriDetails
+      .map((cantiere) => `
+        <div class="card mb-3">
+          <div class="card-body p-3">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+              <div class="d-flex align-items-center">
+                <i class="bi bi-building text-success me-2"></i>
+                <div>
+                  <h6 class="mb-1 fw-bold">${cantiere.nome}</h6>
+                  <small class="text-muted">${cantiere.categoria}</small>
+                </div>
+              </div>
+              <div class="text-end">
+                <div class="fw-bold text-primary">${cantiere.totalHours}</div>
+                <small class="text-muted">${minutesToDecimal(cantiere.totalMinutes)} ore</small>
+              </div>
+            </div>
+            <div class="d-flex justify-content-between align-items-center">
+              <small class="text-muted">
+                <i class="bi bi-calendar-check me-1"></i>
+                ${cantiere.giorni.size} giorni lavorati
+              </small>
+              <small class="text-muted">
+                ${cantiere.totalMinutes} minuti totali
+              </small>
+            </div>
+            <div class="mt-2">
+              <small class="text-muted d-block">
+                <strong>Giorni:</strong> ${Array.from(cantiere.giorni).join(', ')}
+              </small>
+            </div>
+          </div>
+        </div>
+      `)
       .join('');
 
     cantieriListElement.innerHTML = `
       <div class="mb-2">
         <strong class="text-primary">
           <i class="bi bi-list-ul me-1"></i>
-          Cantieri lavorati (${cantieri.length}):
+          Cantieri lavorati (${cantieriDetails.length}):
         </strong>
       </div>
       ${cantieriHtml}
