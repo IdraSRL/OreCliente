@@ -1099,11 +1099,15 @@ async toggleBadge() {
           dayActivities = day.attivita.length;
           dayMinutes = day.attivita.reduce(
             (sum, activity) => sum + (activity.minutiEffettivi || activity.minuti || 0),
-              // Aggiungi cantieri alla lista
-              if (activity.tipo === 'cantiere' && activity.nome) {
-                cantieriSet.add(activity.nome);
-              }
-            0,
+                    0
+                );
+                
+                // Aggiungi cantieri alla lista
+                day.attivita.forEach(activity => {
+                    if (activity.tipo === 'cantiere' && activity.nome) {
+                        cantieriSet.add(activity.nome);
+                    }
+                });
           );
         }
 
