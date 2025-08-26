@@ -6,22 +6,42 @@ import { getTodayString } from '../utils/date-utils.js';
 
 export class BadgeService {
   constructor(employeeId) {
+    if (!employeeId) {
+      throw new Error('EmployeeId è obbligatorio per BadgeService');
+    }
     this.employeeId = employeeId;
     this._unsubscribe = null;
     this._open = null; // doc open
   }
 
   async startWatcher(onStatusChange) {
+    if (typeof onStatusChange !== 'function') {
+      console.warn('onStatusChange deve essere una funzione');
+      onStatusChange = () => {};
+    }
+    
     const today = getTodayString();
     if (this._unsubscribe) { this._unsubscribe(); this._unsubscribe = null; }
-    this._unsubscribe = await FirestoreService.watchOpenBadgeSession(this.employeeId, today, (open) => {
-      this._open = open;
-      if (typeof onStatusChange === 'function') onStatusChange({ isOpen: !!open, session: open });
-    });
+    
+    try {
+      this._unsubscribe = await FirestoreService.watchOpenBadgeSession(this.employeeId, today, (open) => {
+        this._open = open;
+        onStatusChange({ isOpen: !!open, session: open });
+      });
+    } catch (error) {
+      console.error('Errore avvio watcher badge:', error);
+      throw error;
+    }
   }
 
   stopWatcher() {
-    if (this._unsubscribe) this._unsubscribe();
+    if (this._unsubscribe && typeof this._unsubscribe === 'function') {
+      try {
+        this._unsubscribe();
+      } catch (error) {
+        console.error('Errore stop watcher:', error);
+      }
+    }
     this._unsubscribe = null;
     this._open = null;
   }

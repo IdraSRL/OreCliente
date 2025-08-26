@@ -112,6 +112,12 @@ class TimeEntryService {
     if (!AuthService.initPageProtection('employee')) return;
 
     this.currentUser = AuthService.getCurrentUser();
+    
+    if (!this.currentUser || !this.currentUser.id) {
+      console.error('Utente non valido');
+      AuthService.logout();
+      return;
+    }
 
     // Badge service
     this.badgeService = new BadgeService(this.currentUser.id);
@@ -257,12 +263,25 @@ class TimeEntryService {
       console.log('- Cantieri:', this.cantiereService.getAllCantieri().length);
       console.log('- Categorie:', this.cantiereService.getAllCategorie().length);
 
+      // Verifica che i dati siano stati caricati correttamente
+      const cantieri = this.cantiereService.getAllCantieri();
+      const categorie = this.cantiereService.getAllCategorie();
+      
+      if (cantieri.length === 0) {
+        console.warn('Nessun cantiere caricato');
+        showToast('Nessun cantiere disponibile. Contatta l\'amministratore.', 'warning');
+      }
+      
+      if (categorie.length === 0) {
+        console.warn('Nessuna categoria caricata');
+      }
       this.populateCantieriModal();
       this.populateEmployeeBadge();
       this.populateReportYears();
     } catch (error) {
       console.error('Errore caricamento dati iniziali:', error);
-      showToast('Errore caricamento dati iniziali', 'error');
+      const userMessage = ErrorHandler.handleFirebaseError(error, 'caricamento dati iniziali');
+      showToast(userMessage, 'error');
     } finally {
       showGlobalLoading(false);
     }

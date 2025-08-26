@@ -159,6 +159,22 @@ export function validateFileSize(file, maxSize = 2 * 1024 * 1024) { // 2MB defau
 export function validateForm(formData, rules) {
     const errors = {};
     
+    if (!formData || typeof formData !== 'object') {
+        return {
+            isValid: false,
+            errors: { form: ['Dati form non validi'] },
+            sanitizedData: {}
+        };
+    }
+    
+    if (!rules || typeof rules !== 'object') {
+        return {
+            isValid: true,
+            errors: {},
+            sanitizedData: formData
+        };
+    }
+    
     // Input sanitization
     const sanitizedData = {};
     for (const [key, value] of Object.entries(formData)) {
@@ -184,7 +200,7 @@ export function validateForm(formData, rules) {
         
         // Type validation
         if (fieldRules.type) {
-            if (!this.validateType(value, fieldRules.type)) {
+            if (!validateType(value, fieldRules.type)) {
                 fieldErrors.push(`Tipo di dato non valido. Atteso: ${fieldRules.type}`);
             }
         }
@@ -220,9 +236,14 @@ export function validateForm(formData, rules) {
         
         // Custom validation function
         if (fieldRules.custom && typeof fieldRules.custom === 'function') {
-            const customResult = fieldRules.custom(value);
-            if (customResult !== true) {
-                fieldErrors.push(customResult || 'Valore non valido');
+            try {
+                const customResult = fieldRules.custom(value);
+                if (customResult !== true) {
+                    fieldErrors.push(customResult || 'Valore non valido');
+                }
+            } catch (error) {
+                console.error('Errore validazione custom:', error);
+                fieldErrors.push('Errore validazione');
             }
         }
         
@@ -231,16 +252,15 @@ export function validateForm(formData, rules) {
         }
     }
     
-return {
-    isValid: Object.keys(errors).length === 0,
-    errors,
-    sanitizedData
-};
-
+    return {
+        isValid: Object.keys(errors).length === 0,
+        errors,
+        sanitizedData
+    };
 }
 
 // Validate data type
-function validateType(value, expectedType) {
+export function validateType(value, expectedType) {
     switch (expectedType) {
         case 'string':
             return typeof value === 'string';

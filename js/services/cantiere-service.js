@@ -71,6 +71,10 @@ export class CantiereService {
 
         // Initialize with all categories from database
         this.categorie.forEach(categoria => {
+            if (!categoria || !categoria.id) {
+                console.warn('Categoria non valida trovata:', categoria);
+                return;
+            }
             grouped[categoria.id] = {
                 categoria,
                 cantieri: []
@@ -87,6 +91,11 @@ export class CantiereService {
         
         // Add cantieri to their categories
         this.getActiveCantieri().forEach(cantiere => {
+            if (!cantiere || !cantiere.id) {
+                console.warn('Cantiere non valido trovato:', cantiere);
+                return;
+            }
+            
             // Try to find categoria by ID first, then by name for backward compatibility
             let categoriaId = cantiere.categoria;
             
@@ -108,7 +117,11 @@ export class CantiereService {
             grouped[categoriaId].cantieri.push(cantiere);
         });
         
-        const result = Object.values(grouped);
+        // Filtra categorie vuote (eccetto "generale")
+        const result = Object.values(grouped).filter(group => 
+            group.cantieri.length > 0 || group.categoria.id === 'generale'
+        );
+        
         console.log('Debug - Risultato getCantieriByCategoria:', result);
         return result;
     }

@@ -23,21 +23,28 @@ export class TableRenderer {
             return;
         }
         
-        // Check if this is a simple activities list (for time entry)
-        if (activities.length > 0 && activities[0].nome && !activities[0].minuti) {
+        // Render simple activities (for time entry)
+        const isSimpleView = activities.length > 0 && activities[0].hasOwnProperty('nome') && !activities[0].hasOwnProperty('minuti');
+        
+        if (isSimpleView) {
             activities.forEach(activity => {
+                if (!activity || !activity.id) {
+                    console.warn('Attività non valida:', activity);
+                    return;
+                }
+                
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td><span class="badge bg-${this.getActivityBadgeColor(activity.tipo)}">${activity.tipo}</span></td>
                     <td>
-                        <div class="fw-bold">${activity.nome}</div>
+                        <div class="fw-bold">${this.escapeHtml(activity.nome || 'Attività senza nome')}</div>
                         ${activity.categoriaName ? `<div><span class="badge bg-secondary">${activity.categoriaName}</span></div>` : ''}
-                        ${activity.note ? `<small class="text-muted d-block">${activity.note}</small>` : ''}
+                        ${activity.note ? `<small class="text-muted d-block">${this.escapeHtml(activity.note)}</small>` : ''}
                     </td>
                     <td>${minutesToHHMM(activity.minutiEffettivi || activity.minuti || 0)}</td>
                     <td>${minutesToDecimal(activity.minutiEffettivi || activity.minuti || 0)}</td>
                     <td>
-                        <button class="btn btn-sm btn-outline-danger" data-action="delete-activity" aria-label="Elimina attività" data-id="${activity.id}">
+                        <button class="btn btn-sm btn-outline-danger" data-action="delete-activity" aria-label="Elimina attività" data-id="${this.escapeHtml(activity.id)}">
                             <i class="bi bi-trash"></i>
                         </button>
                     </td>
@@ -49,21 +56,26 @@ export class TableRenderer {
         
         // Render editable activities table (for admin)
         activities.forEach(activity => {
+            if (!activity || !activity.id) {
+                console.warn('Attività non valida:', activity);
+                return;
+            }
+            
             const row = document.createElement('tr');
             row.innerHTML = `
                 <td>
                     <span class="badge bg-${this.getActivityBadgeColor(activity.tipo)}">${activity.tipo}</span>
                 </td>
-                <td>${activity.nome}</td>
+                <td>${this.escapeHtml(activity.nome || 'Attività senza nome')}</td>
                 <td>
                     <input type="number" class="form-control form-control-sm" 
                            value="${activity.minuti || 0}" min="0" max="1440"
-                           onchange="timeEntryService.updateActivity('${activity.id}', 'minuti', this.value)">
+                           onchange="timeEntryService.updateActivity('${this.escapeHtml(activity.id)}', 'minuti', this.value)">
                 </td>
                 <td>
                     <input type="number" class="form-control form-control-sm" 
                            value="${activity.persone || 1}" min="1" max="50"
-                           onchange="timeEntryService.updateActivity('${activity.id}', 'persone', this.value)">
+                           onchange="timeEntryService.updateActivity('${this.escapeHtml(activity.id)}', 'persone', this.value)">
                 </td>
                 <td>
                     <strong class="text-primary">${activity.minutiEffettivi || activity.minuti || 0}</strong>
@@ -72,13 +84,21 @@ export class TableRenderer {
                     <strong class="text-success">${minutesToHHMM(activity.minutiEffettivi || activity.minuti || 0)}</strong>
                 </td>
                 <td>
-                    <button class="btn btn-sm btn-outline-danger" onclick="timeEntryService.removeActivity('${activity.id}')">
+                    <button class="btn btn-sm btn-outline-danger" onclick="timeEntryService.removeActivity('${this.escapeHtml(activity.id)}')">
                         <i class="bi bi-trash"></i>
                     </button>
                 </td>
             `;
             tbody.appendChild(row);
         });
+    }
+    
+    // Helper method to escape HTML
+    static escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
     
     // Render hierarchical view for admin reports

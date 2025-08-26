@@ -119,6 +119,9 @@ class AdminService {
         try {
             showGlobalLoading(true);
             
+            // Verifica connessione prima di caricare
+            await FirestoreService.testConnection();
+            
             // Carica dipendenti e cantieri
             await Promise.all([
                 this.employeeService.loadEmployees(),
@@ -130,6 +133,11 @@ class AdminService {
             console.error('Errore caricamento dati iniziali:', error);
             const userMessage = ErrorHandler.handleFirebaseError(error, 'caricamento dati iniziali');
             showToast(userMessage, 'error');
+            
+            // In caso di errore, inizializza con dati vuoti per evitare crash
+            this.employeeService.employees = [];
+            this.cantiereService.cantieri = [];
+            this.cantiereService.categorie = [];
         } finally {
             showGlobalLoading(false);
         }

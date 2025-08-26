@@ -10,17 +10,20 @@ export { PerformanceMonitor } from './performance-monitor.js';
 
 // Performance
 export function debounce(func, wait) {
+    if (typeof func !== 'function') {
+        console.error('debounce: primo parametro deve essere una funzione');
+        return () => {};
+    }
+    
     let timeout;
     return function executedFunction(...args) {
         try {
             const later = () => {
                 clearTimeout(timeout);
-                if (typeof func === 'function') {
-                    func(...args);
-                }
+                func(...args);
             };
             clearTimeout(timeout);
-            timeout = setTimeout(later, wait || 300);
+            timeout = setTimeout(later, Math.max(0, wait || 300));
         } catch (error) {
             ErrorHandler.logError(error, 'Debounce function');
         }
@@ -29,10 +32,13 @@ export function debounce(func, wait) {
 
 // ID generation
 export function generateId(baseName = 'item') {
-    if (!baseName || typeof baseName !== 'string') {
+    if (!baseName || typeof baseName !== 'string' || baseName.trim() === '') {
         baseName = 'item';
     }
-    return `${baseName}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    
+    // Sanitizza baseName
+    const cleanBaseName = baseName.replace(/[^a-zA-Z0-9]/g, '').substring(0, 20) || 'item';
+    return `${cleanBaseName}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
 // Utility functions

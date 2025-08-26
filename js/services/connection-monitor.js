@@ -40,19 +40,19 @@ export class ConnectionMonitor {
     
     static async checkConnectivity() {
         try {
-            const response = await fetch('/favicon.ico', {
+            // Usa un endpoint più affidabile per il test di connettività
+            const response = await fetch('https://www.google.com/favicon.ico', {
                 method: 'HEAD',
-                cache: 'no-cache'
+                cache: 'no-cache',
+                mode: 'no-cors'
             });
             
             const wasOnline = this.isOnline;
-            this.isOnline = response.ok;
+            this.isOnline = true; // Se arriviamo qui, siamo online
             
             if (!wasOnline && this.isOnline) {
                 this.notifyListeners('online');
                 this.processRetryQueue();
-            } else if (wasOnline && !this.isOnline) {
-                this.notifyListeners('offline');
             }
         } catch (error) {
             const wasOnline = this.isOnline;

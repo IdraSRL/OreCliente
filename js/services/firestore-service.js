@@ -165,48 +165,67 @@ export class FirestoreService {
 
   // === ORE LAVORATIVE ===
   static async getOreLavorative(employeeId, date) {
-    return await this._retry(async () => {
-      try {
-        if (!employeeId || !date) throw new Error('EmployeeId e date sono obbligatori');
-        const employees = await this.getEmployees();
-        const employee = employees.find(emp => emp.id === employeeId);
-        if (!employee) {
-          console.warn(`Dipendente non trovato: ${employeeId}`);
-          return { data: date, stato: 'Normale', attivita: [] };
-        }
-        const employeeName = employee.name ? employee.name.replace(/[^a-zA-Z0-9_]/g, '_') : employeeId;
-        const docRef = doc(db, DB_STRUCTURE.CLIENT_COLLECTION, DB_STRUCTURE.SUBCOLLECTIONS.DIPENDENTI, employeeName, date);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) return docSnap.data();
-        return { data: date, stato: 'Normale', attivita: [] };
-      } catch (error) {
-        console.error('Errore caricamento ore lavorative:', error);
+    try {
+      if (!employeeId || !date) {
+        throw new Error('EmployeeId e date sono obbligatori');
+      }
+      
+      const employees = await this.getEmployees();
+      const employee = employees.find(emp => emp.id === employeeId);
+      if (!employee) {
+        console.warn(`Dipendente non trovato: ${employeeId}`);
         return { data: date, stato: 'Normale', attivita: [] };
       }
-    });
-  }
-
-  static async saveOreLavorative(employeeId, date, data) {
-    return await this._retry(async () => {
-      try {
-        if (!employeeId || !date || !data) throw new Error('Parametri obbligatori mancanti');
-        const employees = await this.getEmployees();
-        const employee = employees.find(emp => emp.id === employeeId);
-        if (!employee) throw new Error(`Dipendente non trovato: ${employeeId}`);
-        const employeeName = employee.name ? employee.name.replace(/[^a-zA-Z0-9_]/g, '_') : employeeId;
-        const docRef = doc(db, DB_STRUCTURE.CLIENT_COLLECTION, DB_STRUCTURE.SUBCOLLECTIONS.DIPENDENTI, employeeName, date);
-        const payload = {
+      
+      const employeeName = employee.name ? employee.name.replace(/[^a-zA-Z0-9_]/g, '_') : employeeId;
+      const docRef = doc(db, DB_STRUCTURE.CLIENT_COLLECTION, DB_STRUCTURE.SUBCOLLECTIONS.DIPENDENTI, employeeName, date);
+      const docSnap = await getDoc(docRef);
+      
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        // Validazione dati
+        return {
           data: data.data || date,
           stato: data.stato || 'Normale',
           attivita: Array.isArray(data.attivita) ? data.attivita : []
         };
-        await setDoc(docRef, payload);
-        return true;
-      } catch (error) {
-        console.error('Errore salvataggio ore lavorative:', error);
-        throw error;
       }
-    });
+      
+      return { data: date, stato: 'Normale', attivita: [] };
+    } catch (error) {
+      console.error('Errore caricamento ore lavorative:', error);
+      throw error; // Rilancia l'errore invece di nasconderlo
+    }
+  }
+
+  static async saveOreLavorative(employeeId, date, data) {
+    try {
+      if (!employeeId || !date || !data) {
+        throw new Error('Parametri obbligatori mancanti');
+      }
+      
+      const employees = await this.getEmployees();
+      const employee = employees.find(emp => emp.id === employeeId);
+      if (!employee) {
+        throw new Error(`Dipendente non trovato: ${employeeId}`);
+      }
+      
+      const employeeName = employee.name ? employee.name.replace(/[^a-zA-Z0-9_]/g, '_') : employeeId;
+      const docRef = doc(db, DB_STRUCTURE.CLIENT_COLLECTION, DB_STRUCTURE.SUBCOLLECTIONS.DIPENDENTI, employeeName, date);
+      
+      // Validazione e sanitizzazione payload
+      const payload = {
+        data: data.data || date,
+        stato: data.stato || 'Normale',
+        attivita: Array.isArray(data.attivita) ? data.attivita.filter(a => a && typeof a === 'object') : []
+      };
+      
+      await setDoc(docRef, payload);
+      return true;
+    } catch (error) {
+      console.error('Errore salvataggio ore lavorative:', error);
+      throw error;
+    }
   }
 
   static async getOrePeriodo(employeeId, start, end) {
