@@ -153,9 +153,9 @@ export class CantiereService {
         }
         
         // Create base ID from name
-        const baseId = name.toLowerCase()
-            .replace(/[^a-z0-9\s]/g, '') // Remove special characters
-            .replace(/\s+/g, '_') // Replace spaces with underscores
+        const baseId = name.trim()
+            .replace(/[^a-zA-Z0-9\s]/g, '') // Remove special characters but keep case
+            .replace(/\s+/g, '') // Remove all spaces
             .substring(0, 30); // Limit length
         
         // Check if ID already exists
@@ -163,7 +163,7 @@ export class CantiereService {
         let finalId = baseId;
         
         while (this.getCantiereById(finalId)) {
-            finalId = `${baseId}_${counter}`;
+            finalId = `${baseId}${counter}`;
             counter++;
         }
         
@@ -196,7 +196,7 @@ export class CantiereService {
         try {
             // Generate ID if not provided
             if (!categoriaData.id) {
-                categoriaData.id = generateId('cat');
+                categoriaData.id = this.generateCategoriaId(categoriaData.name);
             }
             
             // Validate required fields
@@ -229,6 +229,30 @@ export class CantiereService {
             console.error('Error saving categoria:', error);
             throw error;
         }
+    }
+    
+    // Generate categoria ID based on name
+    generateCategoriaId(name) {
+        if (!name || typeof name !== 'string') {
+            return generateId('cat');
+        }
+        
+        // Create base ID from name
+        const baseId = name.trim()
+            .replace(/[^a-zA-Z0-9\s]/g, '') // Remove special characters but keep case
+            .replace(/\s+/g, '') // Remove all spaces
+            .substring(0, 30); // Limit length
+        
+        // Check if ID already exists
+        let counter = 1;
+        let finalId = baseId;
+        
+        while (this.getCategoriaById(finalId)) {
+            finalId = `${baseId}${counter}`;
+            counter++;
+        }
+        
+        return finalId;
     }
     
     // Delete categoria

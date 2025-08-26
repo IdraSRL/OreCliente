@@ -107,15 +107,16 @@ export class EmployeeService {
     generateEmployeeId(employeeData) {
         // Use name-based ID if possible
         if (employeeData.nome && employeeData.cognome) {
-            const baseId = `${employeeData.nome.toLowerCase()}_${employeeData.cognome.toLowerCase()}`
-                .replace(/[^a-z0-9_]/g, '');
+            const baseId = `${employeeData.nome.trim()}${employeeData.cognome.trim()}`
+                .replace(/[^a-zA-Z0-9]/g, '') // Remove special characters but keep case
+                .substring(0, 30); // Limit length
             
             // Check if ID already exists
             let counter = 1;
             let finalId = baseId;
             
             while (this.getEmployeeById(finalId)) {
-                finalId = `${baseId}_${counter}`;
+                finalId = `${baseId}${counter}`;
                 counter++;
             }
             

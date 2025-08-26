@@ -51,12 +51,26 @@ export const RUOLI_DIPENDENTE = [
 ];
 
 export const ICONE_CATEGORIA = [
-    { value: 'bi-cone-striped', label: '🚧 Cantieri' },
+    { value: 'bi-cone-striped', label: '🚧 Cantieri Edili' },
     { value: 'bi-building', label: '🏢 Uffici' },
-    { value: 'bi-stairs', label: '🪜 Scale' },
-    { value: 'bi-house', label: '🏠 Appartamenti' },
-    { value: 'bi-cup-straw', label: '🍽️ Ristoranti' },
-    { value: 'bi-door-open', label: '🛏️ BnB' }
+    { value: 'bi-house-door', label: '🏠 Residenziale' },
+    { value: 'bi-shop', label: '🏪 Commerciale' },
+    { value: 'bi-hospital', label: '🏥 Sanitario' },
+    { value: 'bi-bank', label: '🏛️ Pubblico' },
+    { value: 'bi-factory', label: '🏭 Industriale' },
+    { value: 'bi-tree', label: '🌳 Verde/Parchi' },
+    { value: 'bi-water', label: '💧 Idraulico' },
+    { value: 'bi-lightning', label: '⚡ Elettrico' },
+    { value: 'bi-thermometer-sun', label: '🔥 Termoidraulico' },
+    { value: 'bi-tools', label: '🔧 Manutenzione' },
+    { value: 'bi-paint-bucket', label: '🎨 Pittura' },
+    { value: 'bi-bricks', label: '🧱 Muratura' },
+    { value: 'bi-hammer', label: '🔨 Carpenteria' },
+    { value: 'bi-truck', label: '🚛 Trasporti' },
+    { value: 'bi-shield-check', label: '🛡️ Sicurezza' },
+    { value: 'bi-clipboard-check', label: '📋 Controlli' },
+    { value: 'bi-gear', label: '⚙️ Impianti' },
+    { value: 'bi-wifi', label: '📡 Tecnologico' }
 ];
 
 

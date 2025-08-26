@@ -152,7 +152,7 @@ export class FormHandlers {
     // Get categoria form data
     static getCategoriaFormData() {
         return {
-            id: document.getElementById('categoriaId')?.value || generateId('cat'),
+            id: document.getElementById('categoriaId')?.value || '', // Will be generated in service
             name: document.getElementById('categoriaName')?.value?.trim() || '',
             color: document.getElementById('categoriaColor')?.value || '#4285f4',
             icon: document.getElementById('categoriaIcon')?.value || 'bi-building'
