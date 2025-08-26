@@ -1,0 +1,20 @@
+
+
+/* Contrast hardening for dark headers/badges */
+.table thead th, .table thead td {
+  color: #111 !important;
+  background-color: #f6f7f9 !important;
+}
+.badge[class*="bg-"] {
+  color: #fff !important;
+}
+.badge.bg-warning { color: #111 !important; } /* yellow bg needs dark text */
+.card .badge { font-weight: 600; }
+.table tr.total-row td { background-color: #0d6efd; color: #fff; }
+
+
+/* Contrast hardening */
+.table thead th, .table thead td { color:#111 !important; background-color:#f6f7f9 !important; }
+.badge[class*="bg-"] { color:#fff !important; }
+.badge.bg-warning { color:#111 !important; }
+.card .badge { font-weight:600; }
