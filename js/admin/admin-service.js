@@ -1,5 +1,6 @@
 import { AuthService } from '../auth/auth.js';
 import { FirestoreService } from '../services/firestore-service.js';
+import { VERSION } from '../config/version.js';
 import { EmployeeService } from '../services/employee-service.js';
 import { CantiereService } from '../services/cantiere-service.js';
 import { PhotoService } from '../services/photo-service.js';
@@ -78,6 +79,9 @@ class AdminService {
         document.getElementById('applyFilters').addEventListener('click', () => {
             this.applyFilters();
         });
+        
+        // Auto-apply filters on change
+        this.setupAutoFilters();
 
         // Toggle vista
         document.getElementById('viewToggle').addEventListener('change', (e) => {
@@ -113,6 +117,25 @@ class AdminService {
         document.getElementById('employeeCodiceFiscale').addEventListener('input', (e) => {
             e.target.value = e.target.value.toUpperCase();
         });
+    }
+
+    setupAutoFilters() {
+        // Auto-apply filters when selection changes
+        const filterEmployee = document.getElementById('filterEmployee');
+        const filterMonth = document.getElementById('filterMonth');
+        const filterYear = document.getElementById('filterYear');
+        
+        if (filterEmployee) {
+            filterEmployee.addEventListener('change', () => this.applyFilters());
+        }
+        
+        if (filterMonth) {
+            filterMonth.addEventListener('change', () => this.applyFilters());
+        }
+        
+        if (filterYear) {
+            filterYear.addEventListener('change', () => this.applyFilters());
+        }
     }
 
     async loadInitialData() {
@@ -181,6 +204,9 @@ class AdminService {
 
         // Imposta mese corrente
         document.getElementById('filterMonth').value = this.currentFilter.month;
+        
+        // Auto-load data with current filters
+        setTimeout(() => this.applyFilters(), 500);
     }
 
     updateDateTime() {
