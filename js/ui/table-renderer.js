@@ -90,7 +90,7 @@ export class TableRenderer {
         if (!data || data.length === 0) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="6" class="text-center py-4 small">
+                    <td colspan="6" class="text-center py-4">
                         <i class="bi bi-search me-2"></i>
                         Nessun dato trovato per i filtri selezionati
                     </td>
@@ -110,12 +110,12 @@ export class TableRenderer {
                         <i class="bi bi-chevron-down me-2 toggle-icon"></i>
                         <div>
                             <div class="fw-bold">${employeeData.dipendente.name}</div>
-                            <small class="text-muted d-md-none">${employeeData.totalDays} giorni • ${employeeData.totalHours}</small>
+                            <small class="text-muted d-md-none">${employeeData.ore?.length || 0} giorni • ${employeeData.totalHours}</small>
                         </div>
                     </div>
                 </td>
-                <td class="d-none d-md-table-cell"><strong>${employeeData.totalDays}</strong></td>
-                <td><strong class="small">${employeeData.totalMinutes}</strong></td>
+                <td class="d-none d-md-table-cell"><strong>${employeeData.ore?.length || 0}</strong></td>
+                <td><strong>${employeeData.totalMinutes}</strong></td>
                 <td><strong class="text-primary">${employeeData.totalHours}</strong></td>
                 <td class="d-none d-md-table-cell"><strong>${employeeData.totalDecimal}</strong></td>
                 <td>
@@ -134,7 +134,7 @@ export class TableRenderer {
             daysContainer.innerHTML = `
                 <td colspan="6" class="p-0">
                     <div class="collapse show" id="days-${employeeData.dipendente.id}">
-                        <table class="table table-sm mb-0 small">
+                        <table class="table table-sm mb-0">
                             <tbody class="days-tbody">
                                 ${this.renderEmployeeDays(employeeData)}
                             </tbody>
@@ -155,7 +155,7 @@ export class TableRenderer {
         if (!data || data.length === 0) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="6" class="text-center py-4 small">
+                    <td colspan="6" class="text-center py-4">
                         <i class="bi bi-search me-2"></i>
                         Nessun dato trovato per i filtri selezionati
                     </td>
@@ -171,16 +171,16 @@ export class TableRenderer {
                         const row = document.createElement('tr');
                         row.innerHTML = `
                             <td>
-                                <div class="fw-bold small">${employeeData.dipendente.name}</div>
-                                <small class="text-muted">${formatDate(day.data).split(',')[0]}</small>
-                                <div class="small">
+                                <div class="fw-bold">${employeeData.dipendente.name}</div>
+                                <div class="text-muted small">${formatDate(day.data).split(',')[0]}</div>
+                                <div class="mt-1">
                                     <span class="badge bg-${this.getActivityBadgeColor(activity.tipo)} me-1">${activity.tipo}</span>
-                                    <span class="d-md-none">${activity.nome.substring(0, 20)}${activity.nome.length > 20 ? '...' : ''}</span>
-                                    <span class="d-none d-md-inline">${activity.nome}</span>
+                                    <span class="d-md-none small">${activity.nome.substring(0, 15)}${activity.nome.length > 15 ? '...' : ''}</span>
+                                    <span class="d-none d-md-inline small">${activity.nome}</span>
                                 </div>
                             </td>
                             <td class="d-none d-md-table-cell">1</td>
-                            <td class="small">${activity.minutiEffettivi || activity.minuti}</td>
+                            <td>${activity.minutiEffettivi || activity.minuti}</td>
                             <td class="text-primary fw-bold">${minutesToHHMM(activity.minutiEffettivi || activity.minuti)}</td>
                             <td class="d-none d-md-table-cell">${minutesToDecimal(activity.minutiEffettivi || activity.minuti)}</td>
                             <td>
@@ -201,7 +201,7 @@ export class TableRenderer {
         if (!employeeData.ore || employeeData.ore.length === 0) {
             return `
                 <tr>
-                    <td colspan="6" class="text-center py-2 text-muted small">
+                    <td colspan="6" class="text-center py-3 text-muted">
                         <i class="bi bi-calendar-x me-1"></i>
                         Nessuna attività registrata
                     </td>
@@ -225,13 +225,13 @@ export class TableRenderer {
                                 <div class="fw-bold">${formatDate(day.data).split(',')[0]}</div>
                                 <div class="d-flex gap-1 mt-1">
                                     <span class="badge bg-${this.getStatusBadgeColor(day.stato)}">${day.stato}</span>
-                                    <span class="badge bg-secondary d-md-none">${day.attivita ? day.attivita.length : 0} att.</span>
+                                    <span class="badge bg-secondary d-md-none small">${day.attivita ? day.attivita.length : 0} att.</span>
                                 </div>
                             </div>
                         </div>
                     </td>
                     <td class="d-none d-md-table-cell">${day.attivita ? day.attivita.length : 0}</td>
-                    <td class="small">${dayMinutes}</td>
+                    <td>${dayMinutes}</td>
                     <td class="text-success fw-bold">${minutesToHHMM(dayMinutes)}</td>
                     <td class="d-none d-md-table-cell">${minutesToDecimal(dayMinutes)}</td>
                     <td>

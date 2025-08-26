@@ -403,7 +403,7 @@ class TimeEntryService {
                   <div class="d-flex justify-content-between align-items-start">
                     <div>
                       <h6 class="mb-1 fw-bold" style="font-size: 0.9rem;">${cantiere.name}</h6>
-                      ${cantiere.descrizione ? `<div class="small text-muted mb-1">${cantiere.descrizione}</div>` : ''}
+                      ${cantiere.descrizione ? `<div class="small text-muted mb-2" style="line-height: 1.3;">${cantiere.descrizione}</div>` : ''}
                       <div class="d-flex align-items-center gap-2">
                         <span class="badge bg-primary small">${minutesToHHMM(cantiere.minutes)}</span>
                         <small class="text-muted">${cantiere.minutes} min</small>
