@@ -111,11 +111,15 @@ class TimeEntryService {
     // Protezione pagina per dipendente
     if (!AuthService.initPageProtection('employee')) return;
 
+        // Aggiorna immediatamente l'UI dopo l'entrata
+        this.updateBadgeUI();
     this.currentUser = AuthService.getCurrentUser();
     
     if (!this.currentUser || !this.currentUser.id) {
       console.error('Utente non valido');
       AuthService.logout();
+        // Aggiorna immediatamente l'UI dopo l'uscita
+        this.updateBadgeUI();
       return;
     }
 
@@ -1074,6 +1078,7 @@ async toggleBadge() {
     let totalMinutes = 0;
     let totalDays = 0;
     let totalActivities = 0;
+    const cantieriSet = new Set(); // Per tracciare i cantieri unici
 
     if (!ore || ore.length === 0) {
       tbody.innerHTML = `
@@ -1094,6 +1099,10 @@ async toggleBadge() {
           dayActivities = day.attivita.length;
           dayMinutes = day.attivita.reduce(
             (sum, activity) => sum + (activity.minutiEffettivi || activity.minuti || 0),
+              // Aggiungi cantieri alla lista
+              if (activity.tipo === 'cantiere' && activity.nome) {
+                cantieriSet.add(activity.nome);
+              }
             0,
           );
         }
@@ -1124,6 +1133,41 @@ async toggleBadge() {
 
     const reportTotalActivities = document.getElementById('reportTotalActivities');
     if (reportTotalActivities) reportTotalActivities.textContent = totalActivities;
+
+    // Aggiorna la lista dei cantieri
+    this.updateCantieriList(Array.from(cantieriSet));
+  }
+
+  updateCantieriList(cantieri) {
+    const cantieriListElement = document.getElementById('reportCantieriList');
+    if (!cantieriListElement) return;
+
+    if (cantieri.length === 0) {
+      cantieriListElement.innerHTML = `
+        <div class="text-center text-muted py-3">
+          <i class="bi bi-building me-2"></i>
+          Nessun cantiere registrato nel periodo selezionato
+        </div>
+      `;
+      return;
+    }
+
+    const cantieriHtml = cantieri.map(cantiere => `
+      <div class="d-flex align-items-center mb-2">
+        <i class="bi bi-building text-success me-2"></i>
+        <span>${cantiere}</span>
+      </div>
+    `).join('');
+
+    cantieriListElement.innerHTML = `
+      <div class="mb-2">
+        <strong class="text-primary">
+          <i class="bi bi-list-ul me-1"></i>
+          Cantieri lavorati (${cantieri.length}):
+        </strong>
+      </div>
+      ${cantieriHtml}
+    `;
   }
 
   /* ----------------------------- Helpers / misc --------------------------- */
