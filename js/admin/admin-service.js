@@ -1,60 +1,51 @@
 import { AuthService } from '../auth/auth.js';
 import { FirestoreService } from '../services/firestore-service.js';
-import { VERSION } from '../config/version.js';
-import { EmployeeService } from '../services/employee-service.js';
-import { CantiereService } from '../services/cantiere-service.js';
 import { PhotoService } from '../services/photo-service.js';
-import { ReportService } from '../services/report-service.js';
 import { TableRenderer } from '../ui/table-renderer.js';
 import { GridRenderer } from '../ui/grid-renderer.js';
 import { FormHandlers } from '../ui/form-handlers.js';
 import { ButtonUtils } from '../ui/button-utils.js';
-import { 
-    debounce,
-    generateId
-} from '../utils/utils.js';
+import { DataLoader } from './data-loader.js';
+import { ReportGenerator } from './report-generator.js';
+import { debounce, generateId } from '../utils/utils.js';
 import { showToast, showConfirm, showGlobalLoading } from '../utils/ui-utils.js';
-import { getMonthRange, isDateAllowedForAdmin, getTodayString, formatDate } from '../utils/date-utils.js';
+import { isDateAllowedForAdmin, getTodayString, formatDate } from '../utils/date-utils.js';
 import { minutesToDecimal, minutesToHHMM } from '../utils/time-utils.js';
-import { APP_CONFIG } from '../config/constants.js';
 import { ErrorHandler } from '../utils/error-handler.js';
 import { MemoryManager } from '../utils/memory-manager.js';
 
 class AdminService {
     constructor() {
         this.currentUser = null;
-        this.employeeService = new EmployeeService();
-        this.cantiereService = new CantiereService();
-        this.cleanup = this.cleanup.bind(this); // Bind cleanup method
+        this.dataLoader = new DataLoader();
+        this.reportGenerator = null;
+        
         this.currentFilter = {
             employee: '',
             month: new Date().getMonth() + 1,
             year: new Date().getFullYear()
         };
+        
         this.viewMode = 'hierarchical'; // 'hierarchical' or 'flat'
+        this.cleanup = this.cleanup.bind(this);
         this.init();
     }
 
     async init() {
-        // Verifica autenticazione admin
         if (!AuthService.initPageProtection('admin')) {
             return;
         }
 
         this.currentUser = AuthService.getCurrentUser();
         
-        // Setup event listeners
+        // Initialize report generator
+        this.reportGenerator = new ReportGenerator(this.dataLoader.getEmployeeService());
+        
         this.setupEventListeners();
-        
-        // Carica dati iniziali
         await this.loadInitialData();
-        
-        // Popola filtri
         this.populateFilters();
-        
-        // Aggiorna data/ora corrente
         this.updateDateTime();
-        setInterval(() => this.updateDateTime(), 60000); // Aggiorna ogni minuto
+        setInterval(() => this.updateDateTime(), 60000);
     }
 
     setupEventListeners() {
@@ -139,73 +130,39 @@ class AdminService {
     }
 
     async loadInitialData() {
-        try {
-            showGlobalLoading(true);
-            
-            // Verifica connessione prima di caricare
-            await FirestoreService.testConnection();
-            
-            // Carica dipendenti e cantieri
-            await Promise.all([
-                this.employeeService.loadEmployees(),
-                this.cantiereService.loadCantieri(),
-                this.cantiereService.loadCategorie()
-            ]);
-
-        } catch (error) {
-            console.error('Errore caricamento dati iniziali:', error);
-            const userMessage = ErrorHandler.handleFirebaseError(error, 'caricamento dati iniziali');
-            showToast(userMessage, 'error');
-            
-            // In caso di errore, inizializza con dati vuoti per evitare crash
-            this.employeeService.employees = [];
-            this.cantiereService.cantieri = [];
-            this.cantiereService.categorie = [];
-        } finally {
-            showGlobalLoading(false);
-        }
+        const data = await this.dataLoader.loadInitialData();
+        // Data is already handled by DataLoader
+        return data;
     }
     
     // Cleanup method
     cleanup() {
-        // Clear any active timers
-        if (this.refreshTimer) {
-            clearInterval(this.refreshTimer);
-            this.refreshTimer = null;
-        }
-        
-        // Clean up services
-        this.employeeService = null;
-        this.cantiereService = null;
+        this.dataLoader = null;
+        this.reportGenerator = null;
         this.currentUser = null;
-        
-        // Clean up memory
         MemoryManager.cleanup();
     }
 
     populateFilters() {
-        // Popola select dipendenti
         const employeeSelect = document.getElementById('filterEmployee');
-        const employees = this.employeeService.getAllEmployees();
+        const employees = this.dataLoader.getEmployeeService().getAllEmployees();
         GridRenderer.populateSelect(employeeSelect, employees, 'id', 'name', 'Tutti i dipendenti');
 
-        // Popola anni (ultimi 3 anni + prossimi 2)
         const yearSelect = document.getElementById('filterYear');
-        const currentYear = new Date().getFullYear();
         yearSelect.innerHTML = '';
         
-        for (let year = currentYear - 3; year <= currentYear + 2; year++) {
+        const availableYears = this.reportGenerator.getAvailableYears();
+        const currentYear = new Date().getFullYear();
+        
+        availableYears.forEach(year => {
             const option = document.createElement('option');
             option.value = year;
             option.textContent = year;
             if (year === currentYear) option.selected = true;
             yearSelect.appendChild(option);
-        }
+        });
 
-        // Imposta mese corrente
         document.getElementById('filterMonth').value = this.currentFilter.month;
-        
-        // Auto-load data with current filters
         setTimeout(() => this.applyFilters(), 500);
     }
 
@@ -230,45 +187,9 @@ class AdminService {
             year: parseInt(document.getElementById('filterYear').value)
         };
 
-        try {
-            showGlobalLoading(true);
-            
-            const { start, end } = getMonthRange(this.currentFilter.year, this.currentFilter.month);
-            let riepilogoData;
-
-            if (this.currentFilter.employee) {
-                // Carica dati per singolo dipendente
-                const employee = this.employeeService.getEmployeeById(this.currentFilter.employee);
-                if (employee) {
-                    const ore = await FirestoreService.getOrePeriodo(employee.id, start, end);
-                    riepilogoData = [{ dipendente: employee, ore: ore }];
-                } else {
-                    riepilogoData = [];
-                }
-            } else {
-                // Carica dati per tutti i dipendenti
-                riepilogoData = await FirestoreService.getRiepilogoCompleto(start, end);
-            }
-
-            if (!riepilogoData) {
-                riepilogoData = [];
-            }
-
-            const processedData = ReportService.processReportData(riepilogoData);
-            this.updateRiepilogoTable(processedData.data);
-            this.updateStats(processedData.totalStats);
-
-        } catch (error) {
-            console.error('Errore caricamento riepilogo:', error);
-            showToast('Errore caricamento dati', 'error');
-            
-            // Aggiorna UI con dati vuoti in caso di errore
-            const emptyData = ReportService.processReportData([]);
-            this.updateRiepilogoTable(emptyData.data);
-            this.updateStats(emptyData.totalStats);
-        } finally {
-            showGlobalLoading(false);
-        }
+        const processedData = await this.reportGenerator.generateReport(this.currentFilter);
+        this.updateRiepilogoTable(processedData.data);
+        this.updateStats(processedData.totalStats);
     }
 
     updateRiepilogoTable(data) {
@@ -292,7 +213,7 @@ class AdminService {
     // === GESTIONE DIPENDENTI ===
     async loadEmployeesGrid() {
         const grid = document.getElementById('employeesGrid');
-        const employees = this.employeeService.getAllEmployees();
+        const employees = this.dataLoader.getEmployeeService().getAllEmployees();
         GridRenderer.renderEmployeesGrid(grid, employees);
     }
 
@@ -301,7 +222,7 @@ class AdminService {
     }
 
     editEmployee(employeeId) {
-        const employee = this.employeeService.getEmployeeById(employeeId);
+        const employee = this.dataLoader.getEmployeeService().getEmployeeById(employeeId);
         if (!employee) return;
 
         FormHandlers.populateEmployeeForm(employee);
@@ -331,7 +252,7 @@ class AdminService {
                 foto: fotoFileName
             };
 
-            await this.employeeService.saveEmployee(finalEmployeeData);
+            await this.dataLoader.getEmployeeService().saveEmployee(finalEmployeeData);
 
             bootstrap.Modal.getInstance(document.getElementById('employeeModal')).hide();
             this.loadEmployeesGrid();
@@ -350,7 +271,7 @@ class AdminService {
     }
 
     async deleteEmployee(employeeId) {
-        const employee = this.employeeService.getEmployeeById(employeeId);
+        const employee = this.dataLoader.getEmployeeService().getEmployeeById(employeeId);
         if (!employee) return;
 
         const confirmed = await showConfirm(
@@ -371,7 +292,7 @@ class AdminService {
                 await PhotoService.deletePhoto(employeeId);
             }
 
-            await this.employeeService.deleteEmployee(employeeId);
+            await this.dataLoader.getEmployeeService().deleteEmployee(employeeId);
 
             this.loadEmployeesGrid();
             this.populateFilters();
@@ -425,23 +346,22 @@ class AdminService {
     // === GESTIONE CANTIERI ===
     async loadCantieriGrid() {
         const grid = document.getElementById('cantieriGrid');
-        const cantieri = this.cantiereService.getAllCantieri();
-        const categorie = this.cantiereService.getAllCategorie();
+        const cantieri = this.dataLoader.getCantiereService().getAllCantieri();
+        const categorie = this.dataLoader.getCantiereService().getAllCategorie();
         GridRenderer.renderCantieriGrid(grid, cantieri, categorie);
     }
 
     async loadCategorieGrid() {
         const grid = document.getElementById('categorieGrid');
-        const categorie = this.cantiereService.getAllCategorie();
+        const categorie = this.dataLoader.getCantiereService().getAllCategorie();
         GridRenderer.renderCategorieGrid(grid, categorie);
     }
 
     resetCantiereForm() {
         FormHandlers.resetCantiereForm();
-        // Popola select categorie
         const categorieSelect = document.getElementById('cantiereCategoria');
         if (categorieSelect) {
-            GridRenderer.populateSelect(categorieSelect, this.cantiereService.getAllCategorie(), 'id', 'name', 'Seleziona categoria');
+            GridRenderer.populateSelect(categorieSelect, this.dataLoader.getCantiereService().getAllCategorie(), 'id', 'name', 'Seleziona categoria');
         }
     }
 
@@ -450,20 +370,19 @@ class AdminService {
     }
 
     editCantiere(cantiereId) {
-        const cantiere = this.cantiereService.getCantiereById(cantiereId);
+        const cantiere = this.dataLoader.getCantiereService().getCantiereById(cantiereId);
         if (!cantiere) return;
 
         FormHandlers.populateCantiereForm(cantiere);
-        // Popola select categorie
         const categorieSelect = document.getElementById('cantiereCategoria');
         if (categorieSelect) {
-            GridRenderer.populateSelect(categorieSelect, this.cantiereService.getAllCategorie(), 'id', 'name', 'Seleziona categoria');
+            GridRenderer.populateSelect(categorieSelect, this.dataLoader.getCantiereService().getAllCategorie(), 'id', 'name', 'Seleziona categoria');
         }
         new bootstrap.Modal(document.getElementById('cantiereModal')).show();
     }
 
     editCategoria(categoriaId) {
-        const categoria = this.cantiereService.getCategoriaById(categoriaId);
+        const categoria = this.dataLoader.getCantiereService().getCategoriaById(categoriaId);
         if (!categoria) return;
 
         FormHandlers.populateCategoriaForm(categoria);
@@ -475,7 +394,7 @@ class AdminService {
             const btn = document.getElementById('saveCantiereBtn');
             ButtonUtils.showLoading(btn, 'Salvataggio...');
 
-            await this.cantiereService.saveCantiere(cantiereData);
+            await this.dataLoader.getCantiereService().saveCantiere(cantiereData);
 
             bootstrap.Modal.getInstance(document.getElementById('cantiereModal')).hide();
             this.loadCantieriGrid();
@@ -497,7 +416,7 @@ class AdminService {
             const btn = document.getElementById('saveCategoriaBtn');
             ButtonUtils.showLoading(btn, 'Salvataggio...');
 
-            await this.cantiereService.saveCategoria(categoriaData);
+            await this.dataLoader.getCantiereService().saveCategoria(categoriaData);
 
             bootstrap.Modal.getInstance(document.getElementById('categoriaModal')).hide();
             this.loadCategorieGrid();
@@ -516,7 +435,7 @@ class AdminService {
     }
 
     async deleteCantiere(cantiereId) {
-        const cantiere = this.cantiereService.getCantiereById(cantiereId);
+        const cantiere = this.dataLoader.getCantiereService().getCantiereById(cantiereId);
         if (!cantiere) return;
 
         const confirmed = await showConfirm(
@@ -530,7 +449,7 @@ class AdminService {
         if (!confirmed) return;
 
         try {
-            await this.cantiereService.deleteCantiere(cantiereId);
+            await this.dataLoader.getCantiereService().deleteCantiere(cantiereId);
             
             this.loadCantieriGrid();
             showToast('Cantiere eliminato con successo', 'success');
@@ -542,7 +461,7 @@ class AdminService {
     }
 
     async deleteCategoria(categoriaId) {
-        const categoria = this.cantiereService.getCategoriaById(categoriaId);
+        const categoria = this.dataLoader.getCantiereService().getCategoriaById(categoriaId);
         if (!categoria) return;
 
         const confirmed = await showConfirm(
@@ -556,7 +475,7 @@ class AdminService {
         if (!confirmed) return;
 
         try {
-            await this.cantiereService.deleteCategoria(categoriaId);
+            await this.dataLoader.getCantiereService().deleteCategoria(categoriaId);
             
             this.loadCategorieGrid();
             this.loadCantieriGrid();
@@ -618,30 +537,9 @@ class AdminService {
         }
     }
 
-async exportToExcel() {
-    try {
-        showToast('Preparazione export in corso...', 'info');
-
-        // Genera i dati con lo stesso filtro attivo nell'interfaccia
-        const reportData = ReportService && ReportService.generateReport
-            ? await ReportService.generateReport(this.currentFilter)
-            : (this.generateReport ? await this.generateReport(this.currentFilter) : null);
-
-        // Usa l'export che carica il template Excel
-        if (ReportService && ReportService.exportToExcel) {
-            await ReportService.exportToExcel(reportData, this.currentFilter);
-        } else {
-            // Fallback per non rompere il flusso se ReportService non è disponibile
-            console.warn('ReportService non disponibile, export fallback non template.');
-            return this._exportToExcelFallback && this._exportToExcelFallback(reportData);
-        }
-
-        showToast('Export completato!', 'success');
-    } catch (error) {
-        console.error('Errore export Excel:', error);
-        showToast('Errore durante l\'export', 'error');
+    async exportToExcel() {
+        await this.reportGenerator.exportToExcel(this.currentFilter);
     }
-}
 
     // Funzioni per modifica attività (placeholder)
     editEmployeeActivities(employeeId) {
@@ -653,7 +551,7 @@ async exportToExcel() {
     }
 
     async openEmployeeActivityEditor(employeeId) {
-        const employee = this.employeeService.getEmployeeById(employeeId);
+        const employee = this.dataLoader.getEmployeeService().getEmployeeById(employeeId);
         if (!employee) {
             showToast('Dipendente non trovato', 'error');
             return;
@@ -724,7 +622,7 @@ async exportToExcel() {
         try {
             showGlobalLoading(true);
             
-            const employee = this.employeeService.getEmployeeById(employeeId);
+            const employee = this.dataLoader.getEmployeeService().getEmployeeById(employeeId);
             const dayData = await FirestoreService.getOreLavorative(employeeId, selectedDate);
             
             this.openDayEditor(employee, selectedDate, dayData);
@@ -1194,7 +1092,7 @@ async exportToExcel() {
         try {
             showGlobalLoading(true);
             
-            const employee = this.employeeService.getEmployeeById(employeeId);
+            const employee = this.dataLoader.getEmployeeService().getEmployeeById(employeeId);
             const dayData = await FirestoreService.getOreLavorative(employeeId, date);
             
             this.openDayEditor(employee, date, dayData);
