@@ -155,11 +155,17 @@ class TimeEntryService {
     if (!cantiereModal) return;
 
     cantiereModal.addEventListener('show.bs.modal', () => {
+      console.log('Debug - Modal cantiere aperto, ricaricamento dati...');
       const cantieri = this.cantiereService.getAllCantieri();
       const categorie = this.cantiereService.getAllCategorie();
+      console.log('Debug - Cantieri nel modal:', cantieri.length);
+      console.log('Debug - Categorie nel modal:', categorie.length);
+      
       if (cantieri.length === 0 || categorie.length === 0) {
+        console.log('Debug - Ricaricamento dati necessario');
         this.loadInitialData().then(() => this.populateCantieriModal());
       } else {
+        console.log('Debug - Dati già presenti, popolamento modal');
         this.populateCantieriModal();
       }
     });
@@ -238,13 +244,18 @@ class TimeEntryService {
     try {
       showGlobalLoading(true, 'Caricamento dati...');
 
+      console.log('Debug - Inizio caricamento dati iniziali');
+      
       await Promise.all([
         this.employeeService.loadEmployees(),
         this.cantiereService.loadCantieri(),
         this.cantiereService.loadCategorie(),
       ]);
 
-      
+      console.log('Debug - Dati caricati:');
+      console.log('- Dipendenti:', this.employeeService.getAllEmployees().length);
+      console.log('- Cantieri:', this.cantiereService.getAllCantieri().length);
+      console.log('- Categorie:', this.cantiereService.getAllCategorie().length);
 
       this.populateCantieriModal();
       this.populateEmployeeBadge();
@@ -324,7 +335,12 @@ class TimeEntryService {
     const container = document.getElementById('cantieriContainer');
     if (!container) return;
 
+    console.log('Debug - populateCantieriModal chiamato');
+    console.log('Debug - Cantieri disponibili:', this.cantiereService.getAllCantieri());
+    console.log('Debug - Categorie disponibili:', this.cantiereService.getAllCategorie());
+
     const cantieriByCategoria = this.cantiereService.getCantieriByCategoria();
+    console.log('Debug - Cantieri per categoria:', cantieriByCategoria);
     container.innerHTML = '';
 
     let totalCantieri = 0;
@@ -340,11 +356,14 @@ class TimeEntryService {
       groupsToProcess = [];
     }
 
+    console.log('Debug - Totale cantieri trovati:', totalCantieri);
+
     if (totalCantieri === 0) {
       container.innerHTML = `
         <div class="alert alert-warning">
           <i class="bi bi-exclamation-triangle me-2"></i>
-          Nessun cantiere disponibile. Contatta l'amministratore per configurare i cantieri.
+          Nessun cantiere disponibile. Contatta l'amministratore per configurare i cantieri.<br>
+          <small>Debug: Cantieri totali: ${this.cantiereService.getAllCantieri().length}, Categorie: ${this.cantiereService.getAllCategorie().length}</small>
         </div>
       `;
       return;

@@ -95,11 +95,15 @@ export class FirestoreService {
   // === CANTIERI ===
   static async getCantieri() {
     try {
+      console.log('Debug - getCantieri chiamato');
       const docRef = doc(db, DB_STRUCTURE.CLIENT_COLLECTION, DB_STRUCTURE.SUBCOLLECTIONS.CANTIERI);
       const docSnap = await getDoc(docRef);
       if (docSnap.exists()) {
-        return docSnap.data().list || [];
+        const cantieri = docSnap.data().list || [];
+        console.log('Debug - Cantieri caricati da Firestore:', cantieri);
+        return cantieri;
       }
+      console.log('Debug - Nessun documento cantieri trovato');
       return [];
     } catch (error) {
       console.error('Errore caricamento cantieri:', error);
@@ -109,6 +113,7 @@ export class FirestoreService {
 
   static async saveCantieri(cantieri) {
     try {
+      console.log('Debug - Salvataggio cantieri:', cantieri);
       const docRef = doc(db, DB_STRUCTURE.CLIENT_COLLECTION, DB_STRUCTURE.SUBCOLLECTIONS.CANTIERI);
       await setDoc(docRef, { list: cantieri });
       return true;
@@ -121,12 +126,24 @@ export class FirestoreService {
   // === CATEGORIE CANTIERI ===
   static async getCategorieCantieri() {
     try {
+      console.log('Debug - getCategorieCantieri chiamato');
       const docRef = doc(db, DB_STRUCTURE.CLIENT_COLLECTION, 'categorie');
       const docSnap = await getDoc(docRef);
       if (docSnap.exists()) {
-        return docSnap.data().list || [];
+        const categorie = docSnap.data().list || [];
+        console.log('Debug - Categorie caricate da Firestore:', categorie);
+        return categorie;
       } else {
-        return [];
+        console.log('Debug - Nessun documento categorie trovato, creando categoria default');
+        // Crea categoria di default se non esiste
+        const defaultCategorie = [{
+          id: 'generale',
+          name: 'Generale',
+          color: '#6c757d',
+          icon: 'bi-building'
+        }];
+        await this.saveCategorieCantieri(defaultCategorie);
+        return defaultCategorie;
       }
     } catch (error) {
       console.error('Errore caricamento categorie cantieri:', error);
@@ -136,6 +153,7 @@ export class FirestoreService {
 
   static async saveCategorieCantieri(categorie) {
     try {
+      console.log('Debug - Salvataggio categorie:', categorie);
       const docRef = doc(db, DB_STRUCTURE.CLIENT_COLLECTION, 'categorie');
       await setDoc(docRef, { list: categorie });
       return true;

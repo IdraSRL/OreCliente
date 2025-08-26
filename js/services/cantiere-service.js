@@ -14,7 +14,7 @@ export class CantiereService {
         try {
             console.log('Loading cantieri from Firestore...');
             this.cantieri = await FirestoreService.getCantieri();
-            console.log('Loaded cantieri:', this.cantieri);
+            console.log('CantiereService - Cantieri caricati:', this.cantieri.length, this.cantieri);
             return this.cantieri;
         } catch (error) {
             console.error('Error loading cantieri:', error);
@@ -28,7 +28,7 @@ export class CantiereService {
         try {
             console.log('Loading categorie from Firestore...');
             this.categorie = await FirestoreService.getCategorieCantieri();
-            console.log('Loaded categorie:', this.categorie);
+            console.log('CantiereService - Categorie caricate:', this.categorie.length, this.categorie);
             return this.categorie;
         } catch (error) {
             console.error('Error loading categorie:', error);
@@ -65,6 +65,9 @@ export class CantiereService {
     // Get cantieri grouped by categoria
     getCantieriByCategoria() {
         const grouped = {};
+        
+        console.log('Debug - Tutti i cantieri:', this.cantieri);
+        console.log('Debug - Tutte le categorie:', this.categorie);
 
         // Initialize with all categories from database
         this.categorie.forEach(categoria => {
@@ -74,10 +77,20 @@ export class CantiereService {
             };
         });
         
+        // Add default "generale" category if not exists
+        if (!grouped['generale']) {
+            grouped['generale'] = {
+                categoria: { id: 'generale', name: 'Generale', color: '#6c757d', icon: 'bi-building' },
+                cantieri: []
+            };
+        }
+        
         // Add cantieri to their categories
         this.getActiveCantieri().forEach(cantiere => {
             // Try to find categoria by ID first, then by name for backward compatibility
             let categoriaId = cantiere.categoria;
+            
+            console.log('Debug - Cantiere:', cantiere.name, 'Categoria:', categoriaId);
             
             // If categoria is stored as name, find the ID
             if (categoriaId && !grouped[categoriaId]) {
@@ -87,15 +100,16 @@ export class CantiereService {
                 }
             }
             
-            if (!grouped[categoriaId]) {
-                // Skip cantieri without valid category
-                return;
+            // If no valid category found, use "generale"
+            if (!categoriaId || !grouped[categoriaId]) {
+                categoriaId = 'generale';
             }
             
             grouped[categoriaId].cantieri.push(cantiere);
         });
         
         const result = Object.values(grouped);
+        console.log('Debug - Risultato getCantieriByCategoria:', result);
         return result;
     }
     
