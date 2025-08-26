@@ -1,5 +1,6 @@
 import { AuthService } from '../auth/auth.js';
 import { FirestoreService } from '../services/firestore-service.js';
+import { VERSION } from '../config/version.js';
 import { EmployeeService } from '../services/employee-service.js';
 import { CantiereService } from '../services/cantiere-service.js';
 import { BadgeService } from '../services/badge-service.js';
@@ -145,6 +146,9 @@ class TimeEntryService {
 
     // Data corrente (sempre oggi di default)
     this.setCurrentDate(getTodayString());
+    
+    // Auto-load current day
+    setTimeout(() => this.loadCurrentDay(), 500);
 
     // Timer badge e autosave
     this.startBadgeTimer();
@@ -186,7 +190,10 @@ class TimeEntryService {
     // Cambio data
     const workDate = document.getElementById('workDate');
     if (workDate) {
-      workDate.addEventListener('change', (e) => this.validateAndSetDate(e.target.value));
+      workDate.addEventListener('change', (e) => {
+        this.validateAndSetDate(e.target.value);
+        this.loadCurrentDay(); // Auto-load when date changes
+      });
     }
 
     // Carica giornata
@@ -198,6 +205,7 @@ class TimeEntryService {
     if (dayStatus) {
       dayStatus.addEventListener('change', async (e) => {
         this.currentDayData.stato = e.target.value;
+        this.updateActivitiesTable();
         this.autoSave();
         await this.saveNow();
       });
@@ -223,6 +231,9 @@ class TimeEntryService {
     // Carica report
     const loadReportBtn = document.getElementById('loadReportBtn');
     if (loadReportBtn) loadReportBtn.addEventListener('click', () => this.loadMonthlyReport());
+    
+    // Auto-load report on month/year change
+    this.setupAutoReport();
 
     // Cambia persone nel modale cantieri
     const cantierePersone = document.getElementById('cantierePersone');
@@ -244,6 +255,19 @@ class TimeEntryService {
           this.removeActivity(id);
         }
       });
+    }
+  }
+
+  setupAutoReport() {
+    const reportMonth = document.getElementById('reportMonth');
+    const reportYear = document.getElementById('reportYear');
+    
+    if (reportMonth) {
+      reportMonth.addEventListener('change', () => this.loadMonthlyReport());
+    }
+    
+    if (reportYear) {
+      reportYear.addEventListener('change', () => this.loadMonthlyReport());
     }
   }
 

@@ -1,6 +1,7 @@
 import { getFirestore, collection, doc, setDoc, updateDoc, getDoc, getDocs, query, where, orderBy, limit, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.1/firebase-firestore.js';
 
 import { db } from '../config/firebase-config.js';
+import { VERSION } from '../config/version.js';
 import { DB_STRUCTURE } from '../config/client-config.js';
 
 export class FirestoreService {
@@ -25,6 +26,7 @@ export class FirestoreService {
   static async testConnection() {
     try {
       const testDoc = doc(db, DB_STRUCTURE.CLIENT_COLLECTION, 'test');
+      console.log(`Testing connection (v${VERSION.APP})...`);
       await getDoc(testDoc);
       return true;
     } catch (error) {

@@ -1,4 +1,5 @@
 // UI utilities for toast notifications, loading states, and confirmations
+import { VERSION } from '../config/version.js';
 import { UI_CONSTANTS } from '../config/constants.js';
 
 // Toast notification system
@@ -18,6 +19,11 @@ export function showToast(message, type = 'info', duration = UI_CONSTANTS.TOAST_
         'warning': 'bg-warning',
         'info': 'bg-info'
     }[type] || 'bg-info';
+
+    // Add version info for debug toasts
+    if (type === 'info' && message.includes('caricamento')) {
+        message += ` (v${VERSION.APP})`;
+    }
 
     toast.innerHTML = `
         <div class="alert ${bgClass} text-white d-flex align-items-center mb-0 shadow-lg" style="border-radius: 8px;">

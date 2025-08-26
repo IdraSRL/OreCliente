@@ -1,7 +1,7 @@
 // Application constants and configuration
 export const APP_CONFIG = {
     NAME: 'Gestione Ore & Cantieri',
-    VERSION: '1.4.0',
+    VERSION: '1.4.1',
     DESCRIPTION: 'Sistema professionale per la gestione delle ore lavorative'
 };
 
