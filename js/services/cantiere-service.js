@@ -76,7 +76,16 @@ export class CantiereService {
         
         // Add cantieri to their categories
         this.getActiveCantieri().forEach(cantiere => {
-            const categoriaId = cantiere.categoria;
+            // Try to find categoria by ID first, then by name for backward compatibility
+            let categoriaId = cantiere.categoria;
+            
+            // If categoria is stored as name, find the ID
+            if (categoriaId && !grouped[categoriaId]) {
+                const categoriaByName = this.categorie.find(cat => cat.name === categoriaId);
+                if (categoriaByName) {
+                    categoriaId = categoriaByName.id;
+                }
+            }
             
             if (!grouped[categoriaId]) {
                 // Skip cantieri without valid category
@@ -95,7 +104,7 @@ export class CantiereService {
         try {
             // Generate ID if not provided
             if (!cantiereData.id) {
-                cantiereData.id = generateId('cantiere');
+                cantiereData.id = this.generateCantiereId(cantiereData.name);
             }
             
             // Validate required fields
@@ -107,10 +116,15 @@ export class CantiereService {
                 throw new Error('Minuti devono essere maggiori di zero');
             }
             
-            // Ensure categoria exists
-            if (cantiereData.categoria && !this.getCategoriaById(cantiereData.categoria)) {
-                // Remove invalid categoria reference
-                delete cantiereData.categoria;
+            // Convert categoria ID to name if needed
+            if (cantiereData.categoria) {
+                const categoria = this.getCategoriaById(cantiereData.categoria);
+                if (categoria) {
+                    cantiereData.categoriaNome = categoria.name;
+                } else {
+                    // Remove invalid categoria reference
+                    delete cantiereData.categoria;
+                }
             }
             
             // Update or add cantiere
@@ -130,6 +144,30 @@ export class CantiereService {
             console.error('Error saving cantiere:', error);
             throw error;
         }
+    }
+    
+    // Generate cantiere ID based on name
+    generateCantiereId(name) {
+        if (!name || typeof name !== 'string') {
+            return generateId('cantiere');
+        }
+        
+        // Create base ID from name
+        const baseId = name.toLowerCase()
+            .replace(/[^a-z0-9\s]/g, '') // Remove special characters
+            .replace(/\s+/g, '_') // Replace spaces with underscores
+            .substring(0, 30); // Limit length
+        
+        // Check if ID already exists
+        let counter = 1;
+        let finalId = baseId;
+        
+        while (this.getCantiereById(finalId)) {
+            finalId = `${baseId}_${counter}`;
+            counter++;
+        }
+        
+        return finalId;
     }
     
     // Delete cantiere

@@ -107,7 +107,15 @@ export class GridRenderer {
         }
         
         cantieri.forEach(cantiere => {
-            const categoria = categorie.find(cat => cat.id === cantiere.categoria) || 
+            // Find categoria by ID or name for backward compatibility
+            let categoria = categorie.find(cat => cat.id === cantiere.categoria);
+            if (!categoria && cantiere.categoria) {
+                categoria = categorie.find(cat => cat.name === cantiere.categoria);
+            }
+            if (!categoria && cantiere.categoriaNome) {
+                categoria = categorie.find(cat => cat.name === cantiere.categoriaNome);
+            }
+            categoria = categoria || 
                             { name: 'Nessuna Categoria', color: '#6c757d', icon: 'bi-building' };
             
             const card = document.createElement('div');
@@ -123,6 +131,9 @@ export class GridRenderer {
                             <div class="flex-grow-1">
                                 <h5 class="mb-1">${cantiere.name}</h5>
                                 <small class="text-muted">${categoria.name}</small>
+                                <div class="mt-1">
+                                    <code class="small text-muted">ID: ${cantiere.id}</code>
+                                </div>
                                 ${cantiere.attivo === false ? '<span class="badge bg-secondary ms-2">Disattivo</span>' : ''}
                             </div>
                         </div>

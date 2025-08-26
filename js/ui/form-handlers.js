@@ -137,11 +137,13 @@ export class FormHandlers {
     
     // Get cantiere form data
     static getCantiereFormData() {
+        const categoriaId = document.getElementById('cantiereCategoria')?.value || '';
+        
         return {
-            id: document.getElementById('cantiereId')?.value || generateId('cantiere'),
+            id: document.getElementById('cantiereId')?.value || '', // Will be generated in service
             name: document.getElementById('cantiereName')?.value?.trim() || '',
             minutes: parseInt(document.getElementById('cantiereMinutes')?.value) || 480,
-            categoria: document.getElementById('cantiereCategoria')?.value || 'generale',
+            categoria: categoriaId || null,
             descrizione: document.getElementById('cantiereDescrizione')?.value?.trim() || '',
             attivo: document.getElementById('cantiereAttivo')?.checked !== false
         };
@@ -344,7 +346,7 @@ export class FormHandlers {
         document.getElementById('cantiereId').value = cantiere.id || '';
         document.getElementById('cantiereName').value = cantiere.name || '';
         document.getElementById('cantiereMinutes').value = cantiere.minutes || 480;
-        document.getElementById('cantiereCategoria').value = cantiere.categoria || 'generale';
+        document.getElementById('cantiereCategoria').value = cantiere.categoria || '';
         document.getElementById('cantiereDescrizione').value = cantiere.descrizione || '';
         document.getElementById('cantiereAttivo').checked = cantiere.attivo !== false;
         
