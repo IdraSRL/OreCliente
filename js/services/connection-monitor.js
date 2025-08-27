@@ -4,8 +4,15 @@ export class ConnectionMonitor {
     static isOnline = navigator.onLine;
     static listeners = new Set();
     static retryQueue = [];
+    static maxRetryQueueSize = 100;
+    static connectivityCheckInterval = null;
     
     static init() {
+        // Evita doppia inizializzazione
+        if (this.connectivityCheckInterval) {
+            return;
+        }
+        
         window.addEventListener('online', () => {
             this.isOnline = true;
             this.notifyListeners('online');
@@ -18,12 +25,21 @@ export class ConnectionMonitor {
         });
         
         // Periodic connectivity check
-        setInterval(() => {
+        this.connectivityCheckInterval = setInterval(() => {
             this.checkConnectivity();
         }, 30000); // Check every 30 seconds
+        
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            this.cleanup();
+        });
     }
     
     static addListener(callback) {
+        if (typeof callback !== 'function') {
+            console.warn('ConnectionMonitor: callback deve essere una funzione');
+            return () => {};
+        }
         this.listeners.add(callback);
         return () => this.listeners.delete(callback);
     }
@@ -40,12 +56,18 @@ export class ConnectionMonitor {
     
     static async checkConnectivity() {
         try {
-            // Usa un endpoint più affidabile per il test di connettività
+            // Test di connettività con timeout
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000);
+            
             const response = await fetch('https://www.google.com/favicon.ico', {
                 method: 'HEAD',
                 cache: 'no-cache',
-                mode: 'no-cors'
+                mode: 'no-cors',
+                signal: controller.signal
             });
+            
+            clearTimeout(timeoutId);
             
             const wasOnline = this.isOnline;
             this.isOnline = true; // Se arriviamo qui, siamo online
@@ -65,21 +87,33 @@ export class ConnectionMonitor {
     }
     
     static addToRetryQueue(operation, context = '') {
+        if (typeof operation !== 'function') {
+            console.warn('ConnectionMonitor: operation deve essere una funzione');
+            return;
+        }
+        
+        // Limita dimensione coda
+        if (this.retryQueue.length >= this.maxRetryQueueSize) {
+            console.warn('Retry queue piena, rimuovo operazione più vecchia');
+            this.retryQueue.shift();
+        }
+        
         this.retryQueue.push({
             operation,
             context,
             timestamp: Date.now()
         });
-        
-        // Limit queue size
-        if (this.retryQueue.length > 50) {
-            this.retryQueue.shift();
-        }
     }
     
     static async processRetryQueue() {
+        if (this.retryQueue.length === 0) {
+            return;
+        }
+        
         const queue = [...this.retryQueue];
         this.retryQueue = [];
+        
+        console.log(`Processando ${queue.length} operazioni in coda...`);
         
         for (const item of queue) {
             try {
@@ -95,6 +129,15 @@ export class ConnectionMonitor {
         }
     }
     
+    static cleanup() {
+        if (this.connectivityCheckInterval) {
+            clearInterval(this.connectivityCheckInterval);
+            this.connectivityCheckInterval = null;
+        }
+        this.listeners.clear();
+        this.retryQueue = [];
+    }
+    
     static getStatus() {
         return {
             isOnline: this.isOnline,
@@ -104,4 +147,6 @@ export class ConnectionMonitor {
 }
 
 // Initialize connection monitor
-ConnectionMonitor.init();
+if (typeof window !== 'undefined') {
+    ConnectionMonitor.init();
+}

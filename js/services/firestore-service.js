@@ -6,92 +6,110 @@ import { DB_STRUCTURE } from '../config/client-config.js';
 
 export class FirestoreService {
   // Retry helper
-  static async _retry(fn, tries = 3) {
+  static async _retry(fn, tries = 3, context = 'unknown') {
     let last;
     for (let i = 0; i <= tries; i++) {
       try {
         return await fn();
       } catch (e) {
         last = e;
+        console.warn(`Retry ${i + 1}/${tries + 1} failed for ${context}:`, e.message);
         if (i < tries) {
           const delay = Math.min(1000 * Math.pow(2, i), 5000); // Exponential backoff
           await new Promise(r => setTimeout(r, delay));
         }
       }
     }
-    throw new Error(`Operazione fallita dopo ${tries + 1} tentativi: ${last.message}`);
+    throw new Error(`Operazione ${context} fallita dopo ${tries + 1} tentativi: ${last?.message || 'Errore sconosciuto'}`);
   }
 
   // === TEST CONNESSIONE ===
   static async testConnection() {
-    try {
+    return await this._retry(async () => {
       const testDoc = doc(db, DB_STRUCTURE.CLIENT_COLLECTION, 'test');
       console.log(`Testing connection (v${VERSION.APP})...`);
       await getDoc(testDoc);
       return true;
-    } catch (error) {
-      console.error('Errore connessione Firebase:', error);
-      throw new Error('Impossibile connettersi al database. Verifica la connessione internet.');
-    }
+    }, 2, 'test connessione');
   }
 
   // === MASTER PASSWORD ===
   static async getMasterPassword() {
-    try {
+    return await this._retry(async () => {
       const docRef = doc(db, DB_STRUCTURE.CLIENT_COLLECTION, DB_STRUCTURE.SUBCOLLECTIONS.MASTER_PASSWORD);
       const docSnap = await getDoc(docRef);
       if (docSnap.exists()) {
-        const password = docSnap.data().password;
-        return password || 'admin';
+        const data = docSnap.data();
+        if (!data || typeof data.password !== 'string') {
+          throw new Error('Dati password corrotti');
+        }
+        return data.password || 'admin';
       } else {
         await this.updateMasterPassword('admin');
         return 'admin';
       }
-    } catch (error) {
-      console.error('Errore caricamento master password:', error);
-      return 'admin';
-    }
+    }, 3, 'caricamento master password');
   }
 
   static async updateMasterPassword(newPassword) {
-    try {
+    if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 3) {
+      throw new Error('Password non valida');
+    }
+    
+    return await this._retry(async () => {
       const docRef = doc(db, DB_STRUCTURE.CLIENT_COLLECTION, DB_STRUCTURE.SUBCOLLECTIONS.MASTER_PASSWORD);
       await setDoc(docRef, { password: newPassword });
       return true;
-    } catch (error) {
-      console.error('Errore aggiornamento master password:', error);
-      throw error;
-    }
+    }, 3, 'aggiornamento master password');
   }
 
   // === DIPENDENTI ===
   static async getEmployees() {
-    try {
+    return await this._retry(async () => {
       const docRef = doc(db, DB_STRUCTURE.CLIENT_COLLECTION, DB_STRUCTURE.SUBCOLLECTIONS.EMPLOYEES);
       const docSnap = await getDoc(docRef);
       if (docSnap.exists()) {
-        const employees = docSnap.data().list || [];
+        const data = docSnap.data();
+        if (!data || !Array.isArray(data.list)) {
+          console.warn('Dati dipendenti corrotti, inizializzazione array vuoto');
+          return [];
+        }
+        const employees = data.list;
         return employees.map(emp => ({
           ...emp,
-          password: emp.password || 'dipendente123'
+          password: emp.password || 'dipendente123',
+          id: emp.id || `emp_${Date.now()}`,
+          name: emp.name || `${emp.nome || 'Nome'} ${emp.cognome || 'Cognome'}`
         }));
       }
       return [];
-    } catch (error) {
-      console.error('Errore caricamento dipendenti:', error);
-      return [];
-    }
+    }, 3, 'caricamento dipendenti');
   }
 
   static async saveEmployees(employees) {
-    try {
-      const docRef = doc(db, DB_STRUCTURE.CLIENT_COLLECTION, DB_STRUCTURE.SUBCOLLECTIONS.EMPLOYEES);
-      await setDoc(docRef, { list: employees });
-      return true;
-    } catch (error) {
-      console.error('Errore salvataggio dipendenti:', error);
-      throw error;
+    if (!Array.isArray(employees)) {
+      throw new Error('Employees deve essere un array');
     }
+    
+    // Validazione base dei dipendenti
+    const validatedEmployees = employees.map(emp => {
+      if (!emp || typeof emp !== 'object') {
+        throw new Error('Dipendente non valido');
+      }
+      if (!emp.id || !emp.name) {
+        throw new Error('Dipendente mancante di dati obbligatori');
+      }
+      return {
+        ...emp,
+        password: emp.password || 'dipendente123'
+      };
+    });
+    
+    return await this._retry(async () => {
+      const docRef = doc(db, DB_STRUCTURE.CLIENT_COLLECTION, DB_STRUCTURE.SUBCOLLECTIONS.EMPLOYEES);
+      await setDoc(docRef, { list: validatedEmployees });
+      return true;
+    }, 3, 'salvataggio dipendenti');
   }
 
   // === CANTIERI ===
@@ -167,11 +185,16 @@ export class FirestoreService {
 
   // === ORE LAVORATIVE ===
   static async getOreLavorative(employeeId, date) {
-    try {
-      if (!employeeId || !date) {
-        throw new Error('EmployeeId e date sono obbligatori');
-      }
-      
+    if (!employeeId || !date) {
+      throw new Error('EmployeeId e date sono obbligatori');
+    }
+    
+    // Validazione formato data
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      throw new Error('Formato data non valido (richiesto YYYY-MM-DD)');
+    }
+    
+    return await this._retry(async () => {
       const employees = await this.getEmployees();
       const employee = employees.find(emp => emp.id === employeeId);
       if (!employee) {
@@ -185,27 +208,38 @@ export class FirestoreService {
       
       if (docSnap.exists()) {
         const data = docSnap.data();
-        // Validazione dati
+        if (!data || typeof data !== 'object') {
+          throw new Error('Dati ore lavorative corrotti');
+        }
+        
+        // Validazione e sanitizzazione dati
+        const attivita = Array.isArray(data.attivita) ? data.attivita.filter(a => 
+          a && typeof a === 'object' && a.id && a.nome
+        ) : [];
+        
         return {
           data: data.data || date,
-          stato: data.stato || 'Normale',
-          attivita: Array.isArray(data.attivita) ? data.attivita : []
+          stato: ['Normale', 'Riposo', 'Ferie', 'Malattia'].includes(data.stato) ? data.stato : 'Normale',
+          attivita
         };
       }
       
       return { data: date, stato: 'Normale', attivita: [] };
-    } catch (error) {
-      console.error('Errore caricamento ore lavorative:', error);
-      throw error; // Rilancia l'errore invece di nasconderlo
+    }, 3, `caricamento ore lavorative ${employeeId}/${date}`);
     }
   }
 
   static async saveOreLavorative(employeeId, date, data) {
-    try {
-      if (!employeeId || !date || !data) {
-        throw new Error('Parametri obbligatori mancanti');
-      }
-      
+    if (!employeeId || !date || !data) {
+      throw new Error('Parametri obbligatori mancanti');
+    }
+    
+    // Validazione formato data
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      throw new Error('Formato data non valido (richiesto YYYY-MM-DD)');
+    }
+    
+    return await this._retry(async () => {
       const employees = await this.getEmployees();
       const employee = employees.find(emp => emp.id === employeeId);
       if (!employee) {
@@ -218,15 +252,18 @@ export class FirestoreService {
       // Validazione e sanitizzazione payload
       const payload = {
         data: data.data || date,
-        stato: data.stato || 'Normale',
-        attivita: Array.isArray(data.attivita) ? data.attivita.filter(a => a && typeof a === 'object') : []
+        stato: ['Normale', 'Riposo', 'Ferie', 'Malattia'].includes(data.stato) ? data.stato : 'Normale',
+        attivita: Array.isArray(data.attivita) ? data.attivita.filter(a => {
+          if (!a || typeof a !== 'object') return false;
+          if (!a.id || !a.nome) return false;
+          if (typeof a.minuti !== 'number' || a.minuti < 0 || a.minuti > 1440) return false;
+          return true;
+        }) : []
       };
       
       await setDoc(docRef, payload);
       return true;
-    } catch (error) {
-      console.error('Errore salvataggio ore lavorative:', error);
-      throw error;
+    }, 3, `salvataggio ore lavorative ${employeeId}/${date}`);
     }
   }
 

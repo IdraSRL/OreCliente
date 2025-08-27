@@ -4,6 +4,14 @@ import { UI_CONSTANTS } from '../config/constants.js';
 
 // Toast notification system
 export function showToast(message, type = 'info', duration = UI_CONSTANTS.TOAST_DURATION) {
+    if (!message || typeof message !== 'string') {
+        console.warn('showToast: messaggio non valido');
+        return;
+    }
+    
+    // Sanitizza il messaggio
+    const sanitizedMessage = message.replace(/[<>]/g, '').substring(0, 200);
+    
     // Remove existing toasts
     const existingToasts = document.querySelectorAll('.toast-custom');
     existingToasts.forEach(toast => toast.remove());
@@ -22,13 +30,13 @@ export function showToast(message, type = 'info', duration = UI_CONSTANTS.TOAST_
 
     // Add version info for debug toasts
     if (type === 'info' && message.includes('caricamento')) {
-        message += ` (v${VERSION.APP})`;
+        sanitizedMessage += ` (v${VERSION.APP})`;
     }
 
     toast.innerHTML = `
         <div class="alert ${bgClass} text-white d-flex align-items-center mb-0 shadow-lg" style="border-radius: 8px;">
             <i class="bi ${getToastIcon(type)} me-2"></i>
-            <span>${message}</span>
+            <span>${sanitizedMessage}</span>
             <button type="button" class="btn-close btn-close-white ms-auto" onclick="this.closest('.toast-custom').remove()"></button>
         </div>
     `;
@@ -36,11 +44,16 @@ export function showToast(message, type = 'info', duration = UI_CONSTANTS.TOAST_
     document.body.appendChild(toast);
 
     // Auto remove after duration
-    setTimeout(() => {
+    const timeoutId = setTimeout(() => {
         if (toast.parentNode) {
             toast.remove();
         }
-    }, duration);
+    }, Math.max(1000, Math.min(duration, 10000))); // Limita durata tra 1-10 secondi
+    
+    // Cleanup timeout se toast viene rimosso manualmente
+    toast.addEventListener('click', () => {
+        clearTimeout(timeoutId);
+    });
 }
 
 function getToastIcon(type) {
@@ -83,6 +96,12 @@ export function showGlobalLoading(show = true, message = 'Caricamento...') {
 // Confirmation dialog
 export function showConfirm(title, message, confirmText = 'Conferma', cancelText = 'Annulla', type = 'primary') {
     return new Promise((resolve) => {
+        if (!title || !message) {
+            console.warn('showConfirm: title e message sono obbligatori');
+            resolve(false);
+            return;
+        }
+        
         // Remove existing confirm modals
         const existingModals = document.querySelectorAll('.confirm-modal');
         existingModals.forEach(modal => modal.remove());
@@ -100,19 +119,25 @@ export function showConfirm(title, message, confirmText = 'Conferma', cancelText
             'success': 'btn-success'
         }[type] || 'btn-primary';
 
+        // Sanitizza i contenuti
+        const sanitizedTitle = title.replace(/[<>]/g, '').substring(0, 100);
+        const sanitizedMessage = message.replace(/[<>]/g, '').substring(0, 500);
+        const sanitizedConfirmText = confirmText.replace(/[<>]/g, '').substring(0, 50);
+        const sanitizedCancelText = cancelText.replace(/[<>]/g, '').substring(0, 50);
+
         confirmModal.innerHTML = `
             <div class="modal-dialog modal-dialog-centered">
                 <div class="modal-content">
                     <div class="modal-header">
-                        <h5 class="modal-title">${title}</h5>
+                        <h5 class="modal-title">${sanitizedTitle}</h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                     </div>
                     <div class="modal-body">
-                        <p class="mb-0" style="white-space: pre-line;">${message}</p>
+                        <p class="mb-0" style="white-space: pre-line;">${sanitizedMessage}</p>
                     </div>
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">${cancelText}</button>
-                        <button type="button" class="btn ${buttonClass}" id="confirmBtn">${confirmText}</button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">${sanitizedCancelText}</button>
+                        <button type="button" class="btn ${buttonClass}" id="confirmBtn">${sanitizedConfirmText}</button>
                     </div>
                 </div>
             </div>
@@ -120,21 +145,47 @@ export function showConfirm(title, message, confirmText = 'Conferma', cancelText
 
         document.body.appendChild(confirmModal);
 
-        const modal = new bootstrap.Modal(confirmModal);
+        let modal;
+        try {
+            modal = new bootstrap.Modal(confirmModal);
+        } catch (error) {
+            console.error('Errore creazione modal:', error);
+            confirmModal.remove();
+            resolve(false);
+            return;
+        }
         
         // Handle confirm button
         confirmModal.querySelector('#confirmBtn').addEventListener('click', () => {
-            modal.hide();
+            try {
+                modal.hide();
+            } catch (error) {
+                console.error('Errore chiusura modal:', error);
+            }
             resolve(true);
         });
 
         // Handle modal close (cancel)
         confirmModal.addEventListener('hidden.bs.modal', () => {
             confirmModal.remove();
-            resolve(false);
+            // Non chiamare resolve(false) qui se già risolto con true
         });
+        
+        // Timeout di sicurezza
+        setTimeout(() => {
+            if (document.contains(confirmModal)) {
+                confirmModal.remove();
+                resolve(false);
+            }
+        }, 30000); // 30 secondi
 
-        modal.show();
+        try {
+            modal.show();
+        } catch (error) {
+            console.error('Errore apertura modal:', error);
+            confirmModal.remove();
+            resolve(false);
+        }
     });
 }
 

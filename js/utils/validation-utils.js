@@ -7,8 +7,31 @@ export function sanitizeString(str) {
     if (!str || typeof str !== 'string') return '';
     
     return str.trim()
-        .replace(/[<>]/g, '') // Remove potential HTML tags
-        .substring(0, 255); // Limit length
+        .replace(/[<>\"'&]/g, '') // Remove potential HTML/script tags and quotes
+        .replace(/javascript:/gi, '') // Remove javascript: protocol
+        .replace(/on\w+=/gi, '') // Remove event handlers
+        .substring(0, 500); // Limit length
+}
+
+// Sanitize HTML content
+export function sanitizeHtml(html) {
+    if (!html || typeof html !== 'string') return '';
+    
+    // Lista di tag consentiti
+    const allowedTags = ['b', 'i', 'em', 'strong', 'br', 'p'];
+    const tagRegex = /<\/?([a-zA-Z][a-zA-Z0-9]*)\b[^<>]*>/gi;
+    
+    return html.replace(tagRegex, (match, tagName) => {
+        return allowedTags.includes(tagName.toLowerCase()) ? match : '';
+    });
+}
+
+// Validate and sanitize ID
+export function validateAndSanitizeId(id) {
+    if (!id || typeof id !== 'string') return null;
+    
+    const sanitized = id.trim().replace(/[^a-zA-Z0-9_-]/g, '');
+    return sanitized.length >= 1 && sanitized.length <= 50 ? sanitized : null;
 }
 
 // Validate minutes input
