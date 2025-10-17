@@ -300,7 +300,7 @@
             </div>
             <!-- Cantieri Tab -->
             <div class="tab-pane fade" id="cantieri" role="tabpanel">
-                <div class="row mb-4">
+                <div class="row mb-3">
                     <div class="col-12">
                         <div class="d-flex justify-content-between align-items-center">
                             <h4>
@@ -309,6 +309,36 @@
                             <button class="btn btn-primary" onclick="adminService.resetCantiereForm(); new bootstrap.Modal(document.getElementById('cantiereModal')).show();">
                                 <i class="bi bi-plus-circle me-2"></i>Aggiungi Cantiere
                             </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-12">
+                        <div class="card">
+                            <div class="card-body">
+                                <div class="row g-3">
+                                    <div class="col-md-4">
+                                        <label for="cantieriCategoryFilter" class="form-label">Filtra per categoria:</label>
+                                        <select class="form-select" id="cantieriCategoryFilter">
+                                            <option value="">Tutte le categorie</option>
+                                            <!-- Popolato dinamicamente -->
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="cantieriSearch" class="form-label">Cerca cantiere:</label>
+                                        <input type="text" class="form-control" id="cantieriSearch" placeholder="Cerca per nome o descrizione...">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label">&nbsp;</label>
+                                        <div class="d-grid">
+                                            <button class="btn btn-outline-secondary" id="resetCantieriFilters">
+                                                <i class="bi bi-x-circle me-1"></i>Reset
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

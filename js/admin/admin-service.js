@@ -31,6 +31,10 @@ class AdminService {
             month: new Date().getMonth() + 1,
             year: new Date().getFullYear()
         };
+        this.cantieriFilter = {
+            category: '',
+            search: ''
+        };
         this.viewMode = 'hierarchical'; // 'hierarchical' or 'flat'
         this.init();
     }
@@ -98,6 +102,9 @@ class AdminService {
         FormHandlers.setupEmployeeForm((data) => this.saveEmployee(data));
         FormHandlers.setupCantiereForm((data) => this.saveCantiere(data));
         FormHandlers.setupCategoriaForm((data) => this.saveCategoria(data));
+
+        // Setup cantieri filters
+        this.setupCantieriFilters();
 
         document.getElementById('passwordForm').addEventListener('submit', (e) => {
             e.preventDefault();
@@ -423,10 +430,77 @@ class AdminService {
     }
 
     // === GESTIONE CANTIERI ===
+    setupCantieriFilters() {
+        const categoryFilter = document.getElementById('cantieriCategoryFilter');
+        const searchInput = document.getElementById('cantieriSearch');
+        const resetBtn = document.getElementById('resetCantieriFilters');
+
+        if (categoryFilter) {
+            categoryFilter.addEventListener('change', () => {
+                this.cantieriFilter.category = categoryFilter.value;
+                this.loadCantieriGrid();
+            });
+        }
+
+        if (searchInput) {
+            searchInput.addEventListener('input', debounce(() => {
+                this.cantieriFilter.search = searchInput.value.toLowerCase().trim();
+                this.loadCantieriGrid();
+            }, 300));
+        }
+
+        if (resetBtn) {
+            resetBtn.addEventListener('click', () => {
+                this.cantieriFilter = { category: '', search: '' };
+                if (categoryFilter) categoryFilter.value = '';
+                if (searchInput) searchInput.value = '';
+                this.loadCantieriGrid();
+            });
+        }
+    }
+
+    populateCantieriCategoryFilter() {
+        const categoryFilter = document.getElementById('cantieriCategoryFilter');
+        if (!categoryFilter) return;
+
+        const categorie = this.cantiereService.getAllCategorie();
+        const currentValue = categoryFilter.value;
+
+        categoryFilter.innerHTML = '<option value="">Tutte le categorie</option>';
+
+        categorie.forEach(categoria => {
+            const option = document.createElement('option');
+            option.value = categoria.id;
+            option.textContent = categoria.name;
+            categoryFilter.appendChild(option);
+        });
+
+        if (currentValue) {
+            categoryFilter.value = currentValue;
+        }
+    }
+
     async loadCantieriGrid() {
         const grid = document.getElementById('cantieriGrid');
-        const cantieri = this.cantiereService.getAllCantieri();
+        let cantieri = this.cantiereService.getAllCantieri();
         const categorie = this.cantiereService.getAllCategorie();
+
+        // Populate category filter
+        this.populateCantieriCategoryFilter();
+
+        // Apply category filter
+        if (this.cantieriFilter.category) {
+            cantieri = cantieri.filter(cantiere => cantiere.categoria === this.cantieriFilter.category);
+        }
+
+        // Apply search filter
+        if (this.cantieriFilter.search) {
+            cantieri = cantieri.filter(cantiere =>
+                cantiere.name.toLowerCase().includes(this.cantieriFilter.search) ||
+                (cantiere.descrizione && cantiere.descrizione.toLowerCase().includes(this.cantieriFilter.search))
+            );
+        }
+
         GridRenderer.renderCantieriGrid(grid, cantieri, categorie);
     }
 
@@ -453,12 +527,15 @@ class AdminService {
         const cantiere = this.cantiereService.getCantiereById(cantiereId);
         if (!cantiere) return;
 
-        FormHandlers.populateCantiereForm(cantiere);
-        // Popola select categorie
+        // Popola select categorie PRIMA di popolare il form
         const categorieSelect = document.getElementById('cantiereCategoria');
         if (categorieSelect) {
             GridRenderer.populateSelect(categorieSelect, this.cantiereService.getAllCategorie(), 'id', 'name', 'Seleziona categoria');
         }
+
+        // Poi popola il form (che includerà la selezione della categoria)
+        FormHandlers.populateCantiereForm(cantiere);
+
         new bootstrap.Modal(document.getElementById('cantiereModal')).show();
     }
 
