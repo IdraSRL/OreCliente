@@ -252,13 +252,28 @@
                 <div class="modal-body">
                     <div class="row g-3">
                         <div class="col-12 col-md-8">
-                            <div class="d-flex justify-content-between align-items-center mb-3">
+                            <div class="mb-3">
+                                <div class="row g-2">
+                                    <div class="col-12 col-md-6">
+                                        <label class="form-label small">Filtra per categoria:</label>
+                                        <select class="form-select" id="categoryFilter">
+                                            <option value="">Tutte le categorie</option>
+                                            <!-- Popolato dinamicamente -->
+                                        </select>
+                                    </div>
+                                    <div class="col-12 col-md-6">
+                                        <label class="form-label small">Cerca cantiere:</label>
+                                        <input type="text" class="form-control" id="cantiereSearch" placeholder="Cerca per nome...">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center mb-2">
                                 <h6 class="mb-0">Seleziona cantieri:</h6>
                                 <button type="button" class="btn btn-sm btn-outline-secondary d-md-none" id="toggleAllCategories">
                                     <i class="bi bi-arrows-expand me-1"></i>Espandi tutto
                                 </button>
                             </div>
-                            <div id="cantieriContainer" style="max-height: 60vh; overflow-y: auto;">
+                            <div id="cantieriContainer" style="max-height: 50vh; overflow-y: auto;">
                                 <!-- Popolato dinamicamente -->
                             </div>
                         </div>

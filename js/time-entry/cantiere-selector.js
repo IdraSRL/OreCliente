@@ -8,13 +8,85 @@ export class CantiereSelector {
         this.cantiereService = cantiereService;
         this.onCantieriSelected = onCantieriSelected;
         this.selectedCantieri = new Set();
+        this.currentCategoryFilter = '';
+        this.currentSearchTerm = '';
     }
 
     populateModal() {
         const container = document.getElementById('cantieriContainer');
         if (!container) return;
 
-        const cantieriByCategoria = this.cantiereService.getCantieriByCategoria();
+        this.populateCategoryFilter();
+        this.setupFilterListeners();
+        this.renderCantieri();
+    }
+
+    populateCategoryFilter() {
+        const categoryFilter = document.getElementById('categoryFilter');
+        if (!categoryFilter) return;
+
+        const categorie = this.cantiereService.getAllCategorie();
+        const currentValue = categoryFilter.value;
+
+        categoryFilter.innerHTML = '<option value="">Tutte le categorie</option>';
+
+        categorie.forEach(categoria => {
+            const option = document.createElement('option');
+            option.value = categoria.id;
+            option.textContent = categoria.name;
+            categoryFilter.appendChild(option);
+        });
+
+        if (currentValue) {
+            categoryFilter.value = currentValue;
+        }
+    }
+
+    setupFilterListeners() {
+        const categoryFilter = document.getElementById('categoryFilter');
+        const searchInput = document.getElementById('cantiereSearch');
+
+        if (categoryFilter) {
+            categoryFilter.removeEventListener('change', this.handleFilterChange);
+            categoryFilter.addEventListener('change', (e) => {
+                this.currentCategoryFilter = e.target.value;
+                this.renderCantieri();
+            });
+        }
+
+        if (searchInput) {
+            searchInput.removeEventListener('input', this.handleSearchChange);
+            searchInput.addEventListener('input', (e) => {
+                this.currentSearchTerm = e.target.value.toLowerCase().trim();
+                this.renderCantieri();
+            });
+        }
+    }
+
+    renderCantieri() {
+        const container = document.getElementById('cantieriContainer');
+        if (!container) return;
+
+        let cantieriByCategoria = this.cantiereService.getCantieriByCategoria();
+
+        // Apply category filter
+        if (this.currentCategoryFilter) {
+            cantieriByCategoria = cantieriByCategoria.filter(group =>
+                group.categoria.id === this.currentCategoryFilter
+            );
+        }
+
+        // Apply search filter
+        if (this.currentSearchTerm) {
+            cantieriByCategoria = cantieriByCategoria.map(group => ({
+                ...group,
+                cantieri: group.cantieri.filter(cantiere =>
+                    cantiere.name.toLowerCase().includes(this.currentSearchTerm) ||
+                    (cantiere.descrizione && cantiere.descrizione.toLowerCase().includes(this.currentSearchTerm))
+                )
+            })).filter(group => group.cantieri.length > 0);
+        }
+
         container.innerHTML = '';
 
         const totalCantieri = cantieriByCategoria.reduce(
@@ -30,6 +102,22 @@ export class CantiereSelector {
         this.setupToggleAllButton();
         this.renderCategories(container, cantieriByCategoria);
         this.setupEventListeners(container);
+        this.restoreSelections();
+    }
+
+    restoreSelections() {
+        // Restore checkbox states for selected cantieri
+        this.selectedCantieri.forEach(cantiereId => {
+            const checkbox = document.querySelector(`.cantiere-checkbox[value="${cantiereId}"]`);
+            if (checkbox) {
+                checkbox.checked = true;
+                const card = document.querySelector(`.cantiere-card[data-cantiere-id="${cantiereId}"]`);
+                if (card) {
+                    card.classList.add('border-primary');
+                    card.style.backgroundColor = 'rgba(13, 110, 253, 0.1)';
+                }
+            }
+        });
     }
 
     getEmptyStateHTML() {
@@ -228,10 +316,13 @@ export class CantiereSelector {
                 }
             });
 
+            const text = this.selectedCantieri.size === 1 ? 'cantiere' : 'cantieri';
             addBtn.innerHTML = `
                 <i class="bi bi-plus me-2"></i>
-                Aggiungi ${this.selectedCantieri.size} cantieri (${minutesToHHMM(totalMinutes)})
+                Aggiungi ${this.selectedCantieri.size} ${text} (${minutesToHHMM(totalMinutes)})
             `;
+        } else {
+            addBtn.innerHTML = '<i class="bi bi-plus me-2"></i>Aggiungi Cantiere';
         }
     }
 
@@ -310,13 +401,13 @@ export class CantiereSelector {
 
     resetSelection() {
         this.selectedCantieri.clear();
-        
+
         // Reset UI
         document.querySelectorAll('.cantiere-card').forEach(card => {
             card.classList.remove('border-primary');
             card.style.backgroundColor = '';
         });
-        
+
         document.querySelectorAll('.cantiere-checkbox').forEach(checkbox => {
             checkbox.checked = false;
         });
@@ -326,6 +417,16 @@ export class CantiereSelector {
 
         const personeInput = document.getElementById('cantierePersone');
         if (personeInput) personeInput.value = '1';
+
+        // Reset filters
+        const categoryFilter = document.getElementById('categoryFilter');
+        if (categoryFilter) categoryFilter.value = '';
+
+        const searchInput = document.getElementById('cantiereSearch');
+        if (searchInput) searchInput.value = '';
+
+        this.currentCategoryFilter = '';
+        this.currentSearchTerm = '';
 
         this.updateSelectionUI();
     }
