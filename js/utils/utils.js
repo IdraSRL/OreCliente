@@ -15,21 +15,15 @@ export function debounce(func, wait) {
         return () => {};
     }
     
-    const safeWait = Math.max(0, Math.min(wait || 300, 10000)); // Limita wait tra 0-10 secondi
     let timeout;
-    
     return function executedFunction(...args) {
         try {
             const later = () => {
                 clearTimeout(timeout);
-                try {
-                    func(...args);
-                } catch (error) {
-                    ErrorHandler.logError(error, 'Debounced function execution');
-                }
+                func(...args);
             };
             clearTimeout(timeout);
-            timeout = setTimeout(later, safeWait);
+            timeout = setTimeout(later, Math.max(0, wait || 300));
         } catch (error) {
             ErrorHandler.logError(error, 'Debounce function');
         }
@@ -43,51 +37,22 @@ export function generateId(baseName = 'item') {
     }
     
     // Sanitizza baseName
-    const cleanBaseName = baseName.replace(/[^a-zA-Z0-9_-]/g, '').substring(0, 20) || 'item';
-    const timestamp = Date.now();
-    const random = Math.random().toString(36).slice(2, 9);
-    
-    return `${cleanBaseName}-${timestamp}-${random}`;
+    const cleanBaseName = baseName.replace(/[^a-zA-Z0-9]/g, '').substring(0, 20) || 'item';
+    return `${cleanBaseName}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
 // Utility functions
 export function deepClone(obj) {
-    if (obj === null || typeof obj !== 'object') {
-        return obj;
-    }
-    
-    if (obj instanceof Date) {
-        return new Date(obj.getTime());
-    }
-    
-    if (obj instanceof Array) {
-        return obj.map(item => deepClone(item));
-    }
-    
     try {
-        // Usa JSON per oggetti semplici
-        const jsonString = JSON.stringify(obj);
-        if (jsonString === undefined) {
-            console.warn('deepClone: oggetto non serializzabile');
-            return obj;
-        }
-        return JSON.parse(jsonString);
+        return JSON.parse(JSON.stringify(obj));
     } catch (error) {
-        console.warn('Errore deep clone, fallback a shallow copy:', error);
-        // Fallback a shallow copy
-        if (typeof obj === 'object' && obj !== null) {
-            return { ...obj };
-        }
+        console.error('Errore deep clone:', error);
         return obj;
     }
 }
 
 // Format currency
 export function formatCurrency(amount, currency = 'EUR') {
-    if (typeof amount !== 'number' || isNaN(amount)) {
-        return `0.00 ${currency}`;
-    }
-    
     try {
         return new Intl.NumberFormat('it-IT', {
             style: 'currency',
@@ -95,35 +60,25 @@ export function formatCurrency(amount, currency = 'EUR') {
         }).format(amount);
     } catch (error) {
         console.error('Errore formattazione valuta:', error);
-        return `${amount.toFixed(2)} ${currency}`;
+        return `${amount} ${currency}`;
     }
 }
 
 // Format file size
 export function formatFileSize(bytes) {
-    if (typeof bytes !== 'number' || isNaN(bytes) || bytes < 0) {
-        return '0 Bytes';
-    }
-    
     if (bytes === 0) return '0 Bytes';
     
     const k = 1024;
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     
-    const size = bytes / Math.pow(k, i);
-    const formattedSize = size < 10 ? size.toFixed(2) : size.toFixed(1);
-    
-    return formattedSize + ' ' + (sizes[i] || 'Bytes');
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
 // Capitalize first letter
 export function capitalize(str) {
     if (!str || typeof str !== 'string') return '';
-    const trimmed = str.trim();
-    if (trimmed.length === 0) return '';
-    
-    return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
+    return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
 }
 
 // Generate random color

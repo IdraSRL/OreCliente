@@ -33,14 +33,9 @@ class SaveQueue {
     this._pending = false;
     this._lastTask = null;
     this._maxRetries = 3;
-    this._retryDelay = 1000;
   }
 
   async save(task) {
-    if (typeof task !== 'function') {
-      throw new Error('Task deve essere una funzione');
-    }
-    
     this._lastTask = task;
     if (this._saving) {
       this._pending = true;
@@ -56,12 +51,11 @@ class SaveQueue {
           break;
         } catch (error) {
           retries++;
-          console.warn(`SaveQueue retry ${retries}/${this._maxRetries + 1}:`, error.message);
           if (retries > this._maxRetries) {
             throw error;
           }
           // Exponential backoff
-          const delay = Math.min(this._retryDelay * Math.pow(2, retries - 1), 10000);
+          const delay = Math.min(1000 * Math.pow(2, retries - 1), 5000);
           await new Promise((resolve) => setTimeout(resolve, delay));
         }
       }
@@ -72,8 +66,6 @@ class SaveQueue {
       if (!ConnectionMonitor.isOnline) {
         ConnectionMonitor.addToRetryQueue(task, 'SaveQueue operation');
       }
-      
-      throw e; // Re-throw per permettere al chiamante di gestire l'errore
     } finally {
       const shouldRunAgain = this._pending;
       this._pending = false;
@@ -84,15 +76,6 @@ class SaveQueue {
         setTimeout(() => this.save(last), 100); // Prevent immediate recursion
       }
     }
-  }
-  
-  isActive() {
-    return this._saving || this._pending;
-  }
-  
-  clear() {
-    this._pending = false;
-    this._lastTask = null;
   }
 }
 
@@ -132,7 +115,7 @@ class TimeEntryService {
     this.updateBadgeUI();
     this.currentUser = AuthService.getCurrentUser();
 
-    if (!this.currentUser?.id) {
+    if (!this.currentUser || !this.currentUser.id) {
       console.error('Utente non valido');
       AuthService.logout();
       // Aggiorna immediatamente l'UI dopo l'uscita
@@ -140,25 +123,20 @@ class TimeEntryService {
       return;
     }
 
-    try {
-      // Badge service con gestione errori
-      this.badgeService = new BadgeService(this.currentUser.id);
-      await this.badgeService.startWatcher(({ isOpen }) => {
-        const btn = document.getElementById('badgeBtn');
-        const badgeText = document.getElementById('badgeText');
-        if (!btn || !badgeText) return;
-        if (isOpen) {
-          btn.className = 'btn btn-danger w-100';
-          badgeText.textContent = 'Uscita';
-        } else {
-          btn.className = 'btn btn-warning w-100';
-          badgeText.textContent = 'Entrata';
-        }
-      });
-    } catch (error) {
-      console.error('Errore inizializzazione badge service:', error);
-      showToast('Errore inizializzazione sistema badge', 'warning');
-    }
+    // Badge service
+    this.badgeService = new BadgeService(this.currentUser.id);
+    await this.badgeService.startWatcher(({ isOpen }) => {
+      const btn = document.getElementById('badgeBtn');
+      const badgeText = document.getElementById('badgeText');
+      if (!btn || !badgeText) return;
+      if (isOpen) {
+        btn.className = 'btn btn-danger w-100';
+        badgeText.textContent = 'Uscita';
+      } else {
+        btn.className = 'btn btn-warning w-100';
+        badgeText.textContent = 'Entrata';
+      }
+    });
 
     // Listeners UI
     this.setupEventListeners();
@@ -375,27 +353,12 @@ class TimeEntryService {
     try {
       showGlobalLoading(true, 'Caricamento giornata...');
 
-      if (!this.currentUser?.id) {
-        throw new Error('Utente non valido');
-      }
-      
-      if (!this.currentDate || !/^\d{4}-\d{2}-\d{2}$/.test(this.currentDate)) {
-        throw new Error('Data non valida');
-      }
-
       const dayData = await FirestoreService.getOreLavorative(this.currentUser.id, this.currentDate);
-
-      // Validazione dati ricevuti
-      if (!dayData || typeof dayData !== 'object') {
-        throw new Error('Dati giornata non validi');
-      }
 
       this.currentDayData = {
         data: this.currentDate,
-        stato: ['Normale', 'Riposo', 'Ferie', 'Malattia'].includes(dayData.stato) ? dayData.stato : 'Normale',
-        attivita: Array.isArray(dayData.attivita) ? dayData.attivita.filter(a => 
-          a && typeof a === 'object' && a.id && a.nome
-        ) : [],
+        stato: dayData.stato || 'Normale',
+        attivita: dayData.attivita || [],
       };
 
       const dayStatus = document.getElementById('dayStatus');
@@ -407,17 +370,7 @@ class TimeEntryService {
       showToast('Giornata caricata con successo', 'success');
     } catch (error) {
       console.error('Errore caricamento giornata:', error);
-      const userMessage = ErrorHandler.handleFirebaseError(error, 'caricamento giornata');
-      showToast(userMessage, 'error');
-      
-      // Inizializza con dati vuoti in caso di errore
-      this.currentDayData = {
-        data: this.currentDate,
-        stato: 'Normale',
-        attivita: []
-      };
-      this.updateActivitiesTable();
-      this.updateStats();
+      showToast('Errore caricamento giornata', 'error');
     } finally {
       showGlobalLoading(false);
     }
@@ -742,32 +695,22 @@ addPST() {
   const minutesEl = document.getElementById('pstMinutes');
   const personeEl = document.getElementById('pstPersone');
 
-  if (!nameEl || !minutesEl || !personeEl) {
-    showToast('Errore: elementi form non trovati', 'error');
-    return;
-  }
-
   // Prendi il nome in modo sicuro (sempre stringa) e trimma
-  const nome = sanitizeString(nameEl.value || '');
+  const nome = (nameEl?.value ?? '').trim();
 
   // Parse minuti senza usare || per non perdere lo 0
-  let minuti = parseInt(minutesEl.value || '', 10);
+  let minuti = parseInt(minutesEl?.value ?? '', 10);
   if (Number.isNaN(minuti)) minuti = 480;
   if (minuti < 0) minuti = 0;
   if (minuti > 1440) minuti = 1440;
 
   // Parse persone
-  let persone = parseInt(personeEl.value || '', 10);
+  let persone = parseInt(personeEl?.value ?? '', 10);
   if (Number.isNaN(persone) || persone < 1) persone = 1;
   if (persone > 50) persone = 50;
 
   if (!nome) {
-    showToast("Inserisci il nome dell'attività", 'warning');
-    return;
-  }
-
-  if (nome.length < 2) {
-    showToast('Il nome deve essere di almeno 2 caratteri', 'warning');
+    showToast("Inserisci il nome dell'attività", 'warning'); // <-- parentesi aggiunte
     return;
   }
 
@@ -782,13 +725,7 @@ addPST() {
     tipo: 'pst',
   };
 
-  try {
-    this.addActivity(activity);
-  } catch (error) {
-    console.error('Errore aggiunta PST:', error);
-    showToast('Errore aggiunta attività PST', 'error');
-    return;
-  }
+  this.addActivity(activity);
 
   // Reset form e chiusura modal come prima
   const pstForm = document.getElementById('pstForm');
@@ -816,48 +753,18 @@ addPST() {
 
   /* ----------------------------- Activity CRUD ---------------------------- */
   async addActivity(activity) {
-    if (!activity || typeof activity !== 'object') {
-      throw new Error('Attività non valida');
-    }
-    
-    if (!activity.id || !activity.nome) {
-      throw new Error('Attività mancante di dati obbligatori');
-    }
-    
-    // Validazione minuti
-    const minuti = parseInt(activity.minuti) || 0;
-    if (minuti < 0 || minuti > 1440) {
-      throw new Error('Minuti non validi (0-1440)');
-    }
-    
-    // Validazione persone
-    const persone = parseInt(activity.persone) || 1;
-    if (persone < 1 || persone > 50) {
-      throw new Error('Numero persone non valido (1-50)');
-    }
-    
-    // Sanitizzazione
-    const sanitizedActivity = {
-      ...activity,
-      nome: sanitizeString(activity.nome),
-      minuti,
-      persone,
-      minutiEffettivi: Math.round(minuti / persone),
-      note: activity.note ? sanitizeString(activity.note) : ''
-    };
-
     // Se è un cantiere: sostituisce quello precedente con stesso cantiereId nello stesso giorno
-    if (sanitizedActivity.tipo === 'cantiere' && sanitizedActivity.cantiereId) {
+    if (activity && activity.tipo === 'cantiere' && activity.cantiereId) {
       const idx = this.currentDayData.attivita.findIndex(
-        (a) => a.tipo === 'cantiere' && a.cantiereId === sanitizedActivity.cantiereId,
+        (a) => a.tipo === 'cantiere' && a.cantiereId === activity.cantiereId,
       );
       if (idx !== -1) {
-        this.currentDayData.attivita[idx] = sanitizedActivity;
+        this.currentDayData.attivita[idx] = activity;
       } else {
-        this.currentDayData.attivita.push(sanitizedActivity);
+        this.currentDayData.attivita.push(activity);
       }
     } else {
-      this.currentDayData.attivita.push(sanitizedActivity);
+      this.currentDayData.attivita.push(activity);
     }
 
     this.updateActivitiesTable();
@@ -1376,40 +1283,19 @@ addPST() {
   }
 
   async saveNow() {
-    if (!this.currentUser?.id || !this.currentDate || !this.currentDayData) {
-      console.warn('Dati mancanti per il salvataggio');
-      return;
-    }
-    
-    // Validazione dati prima del salvataggio
-    const validatedData = {
-      data: this.currentDayData.data || this.currentDate,
-      stato: ['Normale', 'Riposo', 'Ferie', 'Malattia'].includes(this.currentDayData.stato) 
-        ? this.currentDayData.stato 
-        : 'Normale',
-      attivita: Array.isArray(this.currentDayData.attivita) 
-        ? this.currentDayData.attivita.filter(a => {
-            if (!a || typeof a !== 'object') return false;
-            if (!a.id || !a.nome) return false;
-            if (typeof a.minuti !== 'number' || a.minuti < 0 || a.minuti > 1440) return false;
-            return true;
-          })
-        : []
-    };
-    
     const payload = JSON.parse(JSON.stringify(this.currentDayData));
     const userId = this.currentUser.id;
     const date = this.currentDate;
 
     await this.saveQueue.save(async () => {
       try {
-        await FirestoreService.saveOreLavorative(userId, date, validatedData);
+        await FirestoreService.saveOreLavorative(userId, date, payload);
         const autoSaveStatus = document.getElementById('autoSaveStatus');
         if (autoSaveStatus) autoSaveStatus.innerHTML = '<i class="bi bi-cloud-check me-1"></i>Salvato';
         const lastSaved = document.getElementById('lastSaved');
         if (lastSaved) lastSaved.textContent = 'Ultimo salvataggio: ' + new Date().toLocaleTimeString('it-IT');
       } catch (error) {
-        ErrorHandler.logError(error, 'salvataggio ore lavorative');
+        console.error('Errore salvataggio:', error);
         const autoSaveStatus = document.getElementById('autoSaveStatus');
         if (autoSaveStatus) autoSaveStatus.innerHTML = '<i class="bi bi-cloud-slash me-1"></i>Errore salvataggio';
         throw error;
